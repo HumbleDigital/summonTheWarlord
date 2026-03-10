@@ -102,6 +102,30 @@ const WIZARD_FIELD_GUIDANCE = {
 const askQuestion = (rl, prompt) =>
   new Promise((resolve) => rl.question(prompt, (answer) => resolve(answer.trim())));
 
+async function askSecretQuestion(rl, prompt) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return askQuestion(rl, prompt);
+  }
+
+  const originalWrite = rl._writeToOutput?.bind(rl);
+  rl.output.write(prompt);
+  rl._writeToOutput = () => {};
+
+  try {
+    const answer = await new Promise((resolve) => rl.question("", resolve));
+    rl.output.write("\n");
+    return String(answer).trim();
+  } finally {
+    if (originalWrite) {
+      rl._writeToOutput = originalWrite;
+    }
+  }
+}
+
+function printKeychainAccessHint() {
+  console.log('   Check it in Keychain Access by searching for "summonTheWarlord" and opening "wallet-private-key".');
+}
+
 const COLOR_ENABLED = process.stdout.isTTY;
 const ANSI = {
   reset: "\x1b[0m",
@@ -646,9 +670,10 @@ program
           "🔓 Private key already stored in Keychain. Would you like to replace it? (y/N): "
         );
         if (updateKey.toLowerCase() === "y") {
-          const privKey = await askQuestion(rl, "Paste your new private key: ");
+          const privKey = await askSecretQuestion(rl, "Paste your new private key: ");
           await storePrivateKey(privKey);
           console.log("🔐 Private key updated.");
+          printKeychainAccessHint();
         } else {
           console.log("✅ Keeping existing private key.");
         }
@@ -658,9 +683,10 @@ program
           "Would you like to store your private key in the macOS Keychain now? (y/N): "
         );
         if (storeKey.toLowerCase() === "y") {
-          const privKey = await askQuestion(rl, "Paste your private key: ");
+          const privKey = await askSecretQuestion(rl, "Paste your private key: ");
           await storePrivateKey(privKey);
           console.log("🔐 Private key stored securely.");
+          printKeychainAccessHint();
         } else {
           console.log("⚠️ No private key stored. You can add one later with `summon keychain store`.");
         }
@@ -696,21 +722,22 @@ const keychainCmd = program.command("keychain").description("Manage private key 
 keychainCmd
   .command("store")
   .description("Store private key securely in macOS Keychain")
-  .action(() => {
+  .action(async () => {
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
     });
-    rl.question("Paste your wallet private key: ", async (input) => {
+    try {
+      const input = await askSecretQuestion(rl, "Paste your wallet private key: ");
       rl.close();
-      try {
-        await storePrivateKey(input.trim());
-        console.log("🔐 Private key securely stored in macOS Keychain.");
-      } catch (err) {
-        console.error("❌ Failed to store key:", err.message);
-        process.exitCode = 1;
-      }
-    });
+      await storePrivateKey(input);
+      console.log("🔐 Private key securely stored in macOS Keychain.");
+      printKeychainAccessHint();
+    } catch (err) {
+      rl.close();
+      console.error("❌ Failed to store key:", err.message);
+      process.exitCode = 1;
+    }
   });
 
 keychainCmd
