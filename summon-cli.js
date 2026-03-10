@@ -137,6 +137,53 @@ const ANSI = {
 };
 
 const paint = (text, color) => (COLOR_ENABLED ? `${color}${text}${ANSI.reset}` : text);
+const SENSITIVE_URL_KEY_PATTERN = /key|token|secret|auth|signature|sig|password|pwd/i;
+
+function maskSensitiveValue(value) {
+  const text = String(value ?? "");
+  if (!text) {
+    return text;
+  }
+  if (text.length <= 4) {
+    return "*".repeat(text.length);
+  }
+  return `${"*".repeat(text.length - 4)}${text.slice(-4)}`;
+}
+
+function redactSensitiveUrl(rawUrl) {
+  const urlText = String(rawUrl ?? "").trim();
+  if (!urlText) {
+    return urlText;
+  }
+
+  try {
+    const parsed = new URL(urlText);
+    if (parsed.username) {
+      parsed.username = maskSensitiveValue(parsed.username);
+    }
+    if (parsed.password) {
+      parsed.password = maskSensitiveValue(parsed.password);
+    }
+    for (const [key, value] of parsed.searchParams.entries()) {
+      if (SENSITIVE_URL_KEY_PATTERN.test(key)) {
+        parsed.searchParams.set(key, maskSensitiveValue(value));
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return urlText.replace(
+      /([?&][^=]*(?:key|token|secret|auth|signature|sig|password|pwd)[^=]*=)([^&]+)/ig,
+      (_, prefix, value) => `${prefix}${maskSensitiveValue(value)}`
+    );
+  }
+}
+
+function formatConfigDisplayValue(key, value) {
+  if (key === "rpcUrl") {
+    return redactSensitiveUrl(value);
+  }
+  return toDisplayValue(value);
+}
 
 function clearScreen() {
   if (process.stdout.isTTY) {
@@ -235,7 +282,7 @@ function renderConfigSummary(cfg, configPath, title = "CONFIG") {
   const jitoTip = cfg.jito?.enabled ? cfg.jito.tip : "-";
   const rows = [
     ["Config path", configPath],
-    ["RPC URL", cfg.rpcUrl],
+    ["RPC URL", formatConfigDisplayValue("rpcUrl", cfg.rpcUrl)],
     ["Slippage", cfg.slippage],
     ["Priority fee", cfg.priorityFee],
     ["Priority level", cfg.priorityFeeLevel],
@@ -276,7 +323,7 @@ async function promptSelect(rl, label, options, { current, required = false } = 
 
 async function promptNormalized(rl, label, key, { current, required = false } = {}) {
   while (true) {
-    const suffix = current !== undefined ? ` [${toDisplayValue(current)}]` : "";
+    const suffix = current !== undefined ? ` [${formatConfigDisplayValue(key, current)}]` : "";
     const answer = await askQuestion(rl, `${label}${suffix}: `);
     if (!answer) {
       if (required) {
@@ -613,7 +660,10 @@ configCmd
       process.exit(1);
     }
     await saveConfig(cfg);
-    console.log(`✅  Updated ${key} → ${value} in ${configPath}`);
+    const displayValue = key.startsWith("jito.")
+      ? toDisplayValue(cfg.jito?.[key.split(".")[1]])
+      : formatConfigDisplayValue(key, cfg[key]);
+    console.log(`✅  Updated ${key} → ${displayValue} in ${configPath}`);
     renderConfigSummary(cfg, configPath);
   });
 
