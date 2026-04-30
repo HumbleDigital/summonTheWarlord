@@ -15,35 +15,27 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
           cache: npm
-
-      - name: Ensure modern npm
-        run: npm i -g npm@latest
-
-      - name: Install keytar runtime dependency
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libsecret-1-0
 
       - name: Install
         run: npm ci
 
       - name: Test
-        run: npm test --if-present
+        run: npm test
 
       - name: Build
         run: npm run build --if-present
 
       - name: Publish
-        run: npm publish --provenance
+        run: npm publish
