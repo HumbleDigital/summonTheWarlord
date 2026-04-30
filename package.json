@@ -16,11 +16,11 @@
   "author": "Humble Digital, llc <SummonTheWarlord@pm.me>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/monthviewsales/summonTheWarlord.git"
+    "url": "git+https://github.com/HumbleDigital/summonTheWarlord.git"
   },
-  "homepage": "https://github.com/monthviewsales/summonTheWarlord#readme",
+  "homepage": "https://github.com/HumbleDigital/summonTheWarlord#readme",
   "bugs": {
-    "url": "https://github.com/monthviewsales/summonTheWarlord/issues"
+    "url": "https://github.com/HumbleDigital/summonTheWarlord/issues"
   },
   "type": "module",
   "license": "MIT",
