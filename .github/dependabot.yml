@@ -2,6 +2,7 @@ version: 2
 updates:
   - package-ecosystem: "npm"
     directory: "/"
+    target-branch: "develop"
     schedule:
       # Check daily; you can also use "weekly" or "monthly"
       interval: "daily"

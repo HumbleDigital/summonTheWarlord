@@ -16,11 +16,11 @@
   "author": "Humble Digital, llc <SummonTheWarlord@pm.me>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/monthviewsales/summonTheWarlord.git"
+    "url": "git+https://github.com/HumbleDigital/summonTheWarlord.git"
   },
-  "homepage": "https://github.com/monthviewsales/summonTheWarlord#readme",
+  "homepage": "https://github.com/HumbleDigital/summonTheWarlord#readme",
   "bugs": {
-    "url": "https://github.com/monthviewsales/summonTheWarlord/issues"
+    "url": "https://github.com/HumbleDigital/summonTheWarlord/issues"
   },
   "type": "module",
   "license": "MIT",
@@ -48,14 +48,14 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
-    "eslint": "^9.39.2",
+    "eslint": "^9.39.3",
     "eslint-plugin-import": "^2.32.0",
-    "globals": "^17.3.0",
+    "globals": "^17.4.0",
     "jest": "^30.2.0"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
-    "axios": "^1.13.5",
+    "axios": "^1.13.6",
     "bs58": "^6.0.0",
     "commander": "^14.0.3",
     "fs-extra": "^11.3.3",

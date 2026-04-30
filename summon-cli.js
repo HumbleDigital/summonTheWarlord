@@ -102,6 +102,30 @@ const WIZARD_FIELD_GUIDANCE = {
 const askQuestion = (rl, prompt) =>
   new Promise((resolve) => rl.question(prompt, (answer) => resolve(answer.trim())));
 
+async function askSecretQuestion(rl, prompt) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return askQuestion(rl, prompt);
+  }
+
+  const originalWrite = rl._writeToOutput?.bind(rl);
+  rl.output.write(prompt);
+  rl._writeToOutput = () => {};
+
+  try {
+    const answer = await new Promise((resolve) => rl.question("", resolve));
+    rl.output.write("\n");
+    return String(answer).trim();
+  } finally {
+    if (originalWrite) {
+      rl._writeToOutput = originalWrite;
+    }
+  }
+}
+
+function printKeychainAccessHint() {
+  console.log('   Check it in Keychain Access by searching for "summonTheWarlord" and opening "wallet-private-key".');
+}
+
 const COLOR_ENABLED = process.stdout.isTTY;
 const ANSI = {
   reset: "\x1b[0m",
@@ -113,6 +137,53 @@ const ANSI = {
 };
 
 const paint = (text, color) => (COLOR_ENABLED ? `${color}${text}${ANSI.reset}` : text);
+const SENSITIVE_URL_KEY_PATTERN = /key|token|secret|auth|signature|sig|password|pwd/i;
+
+function maskSensitiveValue(value) {
+  const text = String(value ?? "");
+  if (!text) {
+    return text;
+  }
+  if (text.length <= 4) {
+    return "*".repeat(text.length);
+  }
+  return `${"*".repeat(text.length - 4)}${text.slice(-4)}`;
+}
+
+function redactSensitiveUrl(rawUrl) {
+  const urlText = String(rawUrl ?? "").trim();
+  if (!urlText) {
+    return urlText;
+  }
+
+  try {
+    const parsed = new URL(urlText);
+    if (parsed.username) {
+      parsed.username = maskSensitiveValue(parsed.username);
+    }
+    if (parsed.password) {
+      parsed.password = maskSensitiveValue(parsed.password);
+    }
+    for (const [key, value] of parsed.searchParams.entries()) {
+      if (SENSITIVE_URL_KEY_PATTERN.test(key)) {
+        parsed.searchParams.set(key, maskSensitiveValue(value));
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return urlText.replace(
+      /([?&][^=]*(?:key|token|secret|auth|signature|sig|password|pwd)[^=]*=)([^&]+)/ig,
+      (_, prefix, value) => `${prefix}${maskSensitiveValue(value)}`
+    );
+  }
+}
+
+function formatConfigDisplayValue(key, value) {
+  if (key === "rpcUrl") {
+    return redactSensitiveUrl(value);
+  }
+  return toDisplayValue(value);
+}
 
 function clearScreen() {
   if (process.stdout.isTTY) {
@@ -211,7 +282,7 @@ function renderConfigSummary(cfg, configPath, title = "CONFIG") {
   const jitoTip = cfg.jito?.enabled ? cfg.jito.tip : "-";
   const rows = [
     ["Config path", configPath],
-    ["RPC URL", cfg.rpcUrl],
+    ["RPC URL", formatConfigDisplayValue("rpcUrl", cfg.rpcUrl)],
     ["Slippage", cfg.slippage],
     ["Priority fee", cfg.priorityFee],
     ["Priority level", cfg.priorityFeeLevel],
@@ -252,7 +323,7 @@ async function promptSelect(rl, label, options, { current, required = false } = 
 
 async function promptNormalized(rl, label, key, { current, required = false } = {}) {
   while (true) {
-    const suffix = current !== undefined ? ` [${toDisplayValue(current)}]` : "";
+    const suffix = current !== undefined ? ` [${formatConfigDisplayValue(key, current)}]` : "";
     const answer = await askQuestion(rl, `${label}${suffix}: `);
     if (!answer) {
       if (required) {
@@ -589,7 +660,10 @@ configCmd
       process.exit(1);
     }
     await saveConfig(cfg);
-    console.log(`✅  Updated ${key} → ${value} in ${configPath}`);
+    const displayValue = key.startsWith("jito.")
+      ? toDisplayValue(cfg.jito?.[key.split(".")[1]])
+      : formatConfigDisplayValue(key, cfg[key]);
+    console.log(`✅  Updated ${key} → ${displayValue} in ${configPath}`);
     renderConfigSummary(cfg, configPath);
   });
 
@@ -646,9 +720,10 @@ program
           "🔓 Private key already stored in Keychain. Would you like to replace it? (y/N): "
         );
         if (updateKey.toLowerCase() === "y") {
-          const privKey = await askQuestion(rl, "Paste your new private key: ");
+          const privKey = await askSecretQuestion(rl, "Paste your new private key: ");
           await storePrivateKey(privKey);
           console.log("🔐 Private key updated.");
+          printKeychainAccessHint();
         } else {
           console.log("✅ Keeping existing private key.");
         }
@@ -658,9 +733,10 @@ program
           "Would you like to store your private key in the macOS Keychain now? (y/N): "
         );
         if (storeKey.toLowerCase() === "y") {
-          const privKey = await askQuestion(rl, "Paste your private key: ");
+          const privKey = await askSecretQuestion(rl, "Paste your private key: ");
           await storePrivateKey(privKey);
           console.log("🔐 Private key stored securely.");
+          printKeychainAccessHint();
         } else {
           console.log("⚠️ No private key stored. You can add one later with `summon keychain store`.");
         }
@@ -696,21 +772,22 @@ const keychainCmd = program.command("keychain").description("Manage private key 
 keychainCmd
   .command("store")
   .description("Store private key securely in macOS Keychain")
-  .action(() => {
+  .action(async () => {
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
     });
-    rl.question("Paste your wallet private key: ", async (input) => {
+    try {
+      const input = await askSecretQuestion(rl, "Paste your wallet private key: ");
       rl.close();
-      try {
-        await storePrivateKey(input.trim());
-        console.log("🔐 Private key securely stored in macOS Keychain.");
-      } catch (err) {
-        console.error("❌ Failed to store key:", err.message);
-        process.exitCode = 1;
-      }
-    });
+      await storePrivateKey(input);
+      console.log("🔐 Private key securely stored in macOS Keychain.");
+      printKeychainAccessHint();
+    } catch (err) {
+      rl.close();
+      console.error("❌ Failed to store key:", err.message);
+      process.exitCode = 1;
+    }
   });
 
 keychainCmd
