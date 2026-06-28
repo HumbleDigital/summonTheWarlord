@@ -24,6 +24,9 @@
   },
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "main": "summon-cli.js",
   "bin": {
     "summon": "summon-cli.js"
