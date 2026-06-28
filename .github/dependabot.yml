@@ -10,6 +10,12 @@ updates:
       time: "03:00"
     # Limit to 5 open PRs at a time
     open-pull-requests-limit: 5
+    # Delay routine version-update PRs so newly published packages have time
+    # to be flagged or pulled if an npm supply-chain incident is discovered.
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
     # Block incompatible ESLint 10 major-line bumps until ecosystem support is ready.
     ignore:
       - dependency-name: "eslint"
