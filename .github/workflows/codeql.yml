@@ -1,5 +1,6 @@
 name: CodeQL
 
+
 on:
   push:
     branches: [main, develop]
@@ -30,7 +31,6 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          queries: default
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
