@@ -13,6 +13,8 @@ jobs:
         node-version: [18]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
@@ -24,3 +26,8 @@ jobs:
         run: npm test
       - name: Run lint
         run: npm run lint
+      - name: Check new install scripts
+        if: github.event_name == 'pull_request'
+        run: |
+          git show "origin/${{ github.base_ref }}:package-lock.json" > /tmp/base-package-lock.json
+          node scripts/check-new-install-scripts.js /tmp/base-package-lock.json package-lock.json
