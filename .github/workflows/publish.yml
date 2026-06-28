@@ -44,6 +44,21 @@ jobs:
       - name: Build
         run: npm run build --if-present
 
+      - name: Verify package contents
+        run: |
+          npm pack --dry-run --json > /tmp/npm-pack.json
+          node scripts/verify-packlist.js /tmp/npm-pack.json
+
+      - name: Generate npm SBOM
+        run: npm sbom --sbom-format cyclonedx --json > npm-sbom.json
+
+      - name: Upload npm SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-sbom-${{ github.ref_name }}
+          path: npm-sbom.json
+          retention-days: 30
+
       - name: Check npm version
         id: npm-version
         run: |
@@ -68,4 +83,4 @@ jobs:
 
       - name: Publish
         if: steps.npm-version.outputs.should-publish == 'true'
-        run: npm publish
+        run: npm publish --provenance

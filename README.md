@@ -1,10 +1,8 @@
 # summonTheWarlord — a VAULT77 🔐77 relic
 
 ![Release](https://img.shields.io/npm/v/@vault77/summon?label=release)
-![Node](https://img.shields.io/badge/node-%3E%3D18.x-brightgreen)
+![Node](https://img.shields.io/badge/node-%3E%3D22.12.0-brightgreen)
 ![Platform](https://img.shields.io/badge/platform-macOS-blue)
-
-**Version:** 2.1.8
 
 > _Relic software unearthed from VAULT77.  
 > For trench operators only. macOS‑native. Handle with care._  
@@ -16,7 +14,7 @@
 
 ## Requirements
 
-- Node.js >= 18
+- Node.js >= 22.12 (Node 22 LTS or Node 24 LTS)
 - A [SolanaTracker.io](https://www.solanatracker.io/?ref=0NGJ5PPN) account
 - macOS (required for native Keychain security and system notifications; other operating systems are not supported)
 

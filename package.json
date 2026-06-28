@@ -1,6 +1,6 @@
 {
   "name": "@vault77/summon",
-  "version": "2.1.8",
+  "version": "2.1.9",
   "description": "A recovered VAULT77 relic for macOS operators. summonTheWarlord is a high-performance CLI tool for ultra-fast, low-fee Solana swaps on macOS. Private keys are secured using the native macOS Keychain, never written to disk or exposed to JavaScript memory longer than required. Built for serious CLI workflows with system notifications, local-first execution, and zero browser dependency.",
   "keywords": [
     "solana",
@@ -24,6 +24,9 @@
   },
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "main": "summon-cli.js",
   "bin": {
     "summon": "summon-cli.js"
@@ -50,14 +53,14 @@
     "@eslint/js": "^9.39.4",
     "eslint": "^9.39.3",
     "eslint-plugin-import": "^2.32.0",
-    "globals": "^17.6.0",
+    "globals": "^17.7.0",
     "jest": "^30.4.2"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
-    "axios": "^1.16.0",
+    "axios": "^1.18.1",
     "bs58": "^6.0.0",
-    "commander": "^14.0.3",
+    "commander": "^15.0.0",
     "fs-extra": "^11.3.5",
     "keytar": "^7.9.0",
     "open": "^11.0.0",

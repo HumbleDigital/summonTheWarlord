@@ -7,13 +7,13 @@
 
 ## Repository Expectations (Codex)
 - Keep changes small and targeted unless a refactor is explicitly requested.
-- Run `npm test` and `npm run lint` after changes in `lib/`, `utils/`, `summon-cli.js`, or `test/`.
+- Run `npm test` and `npm run lint` after changes in `lib/`, `utils/`, `scripts/`, `summon-cli.js`, or `test/`.
 - Never log or persist private keys or API keys; use the Keychain flows.
 - Prefer `rg` for search and `apply_patch` for focused edits.
 - If a change affects on-chain trades, call out manual verification steps.
 
 ## Environment & Tooling
-- Target Node.js ≥18 with ES modules enabled. Dependencies are already vendored via `npm install`.
+- Target Node.js ≥22.12.0 with ES modules enabled. Dependencies are already vendored via `npm install`.
 - Assumes macOS access to Keychain; avoid running flows that bypass secure storage.
 - RPC endpoints must include `advancedTx=true`; `lib/trades.js` enforces this by appending the flag when missing.
 - The Solana swap backend is currently `https://swap-v2.solanatracker.io`. If receiving HTTP 500 errors, confirm whether SolanaTracker has migrated to a new base URL and update the SDK or call `tracker.setBaseUrl(...)` accordingly.
