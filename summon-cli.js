@@ -45,12 +45,20 @@ const CONFIG_KEY_SET = new Set([
 const CONFIG_HELP = [
   { key: "rpcUrl", type: "string", note: "RPC URL (advancedTx=true is enforced)" },
   { key: "raptorBaseUrl", type: "string", note: "Raptor swap API base URL" },
-  { key: "slippage", type: "number | auto", note: "Max slippage percentage (auto → dynamic bps)" },
-  { key: "priorityFee", type: "auto | level | microlamports", note: "Priority fee mode for Raptor" },
+  {
+    key: "slippage",
+    type: "number | dynamic",
+    note: "Max slippage percent, or dynamic (Raptor keyword; auto accepted as alias)",
+  },
+  {
+    key: "priorityFee",
+    type: "auto | level | microlamports",
+    note: "auto → use priorityFeeLevel; or set a Raptor level / microlamports",
+  },
   {
     key: "priorityFeeLevel",
     type: PRIORITY_FEE_LEVELS.join(" | "),
-    note: "Used when priorityFee=auto",
+    note: "Raptor priority tier when priorityFee=auto (default auto)",
   },
   { key: "maxPriorityFee", type: "number | empty", note: "Cap dynamic priority fees (lamports)" },
   { key: "computeUnitPriceMicroLamports", type: "number | empty", note: "Override CU price" },
@@ -85,18 +93,20 @@ const WIZARD_FIELD_GUIDANCE = {
     defaultValue: DEFAULT_CONFIG.raptorBaseUrl,
   },
   slippage: {
-    helper: "Max swap slippage percent. Use auto to let Raptor choose dynamically.",
+    helper:
+      "Fixed percent (10 = 10%), or dynamic for Raptor route-aware slippage (API: slippageBps=dynamic). Alias: auto.",
     recommended: DEFAULT_CONFIG.slippage,
     defaultValue: DEFAULT_CONFIG.slippage,
   },
   priorityFee: {
     helper:
-      "Use auto + priorityFeeLevel for Raptor levels, or set microlamports as a number.",
+      "auto → send priorityFeeLevel to Raptor. Or set a level (auto/min/low/medium/…) or fixed microlamports.",
     recommended: `${DEFAULT_CONFIG.priorityFee} + ${DEFAULT_CONFIG.priorityFeeLevel}`,
     defaultValue: DEFAULT_CONFIG.priorityFee,
   },
   priorityFeeLevel: {
-    helper: "Used when priorityFee is auto. Raptor levels: min, low, medium, high, veryHigh, turbo, unsafeMax.",
+    helper:
+      "Raptor priority tier when priorityFee is auto. Docs recommend Auto/Medium. Levels: auto, min, low, medium, high, veryHigh, turbo, unsafeMax.",
     recommended: DEFAULT_CONFIG.priorityFeeLevel,
     defaultValue: DEFAULT_CONFIG.priorityFeeLevel,
   },
@@ -157,6 +167,41 @@ async function askSecretQuestion(rl, prompt) {
 
 function printKeychainAccessHint() {
   console.log('   Check it in Keychain Access by searching for "summonTheWarlord" and opening "wallet-private-key".');
+}
+
+/**
+ * Prompt to store or replace the Raptor API key in Keychain.
+ * Used by setup and config wizard (secret is not stored in config.json).
+ * @param {import('readline').Interface} rl
+ */
+async function promptRaptorApiKeyKeychain(rl) {
+  try {
+    if (await hasRaptorApiKey()) {
+      const updateKey = await askQuestion(
+        rl,
+        "🔑 Raptor API key already stored. Replace it? (y/N): "
+      );
+      if (updateKey.toLowerCase() === "y") {
+        const apiKey = await askSecretQuestion(rl, "Paste your Raptor API key: ");
+        await storeRaptorApiKey(apiKey);
+      } else {
+        console.log("✅ Keeping existing Raptor API key.");
+      }
+    } else {
+      const storeKey = await askQuestion(
+        rl,
+        "Store Raptor API key now? Required for swaps. (Y/n): "
+      );
+      if (storeKey.toLowerCase() !== "n") {
+        const apiKey = await askSecretQuestion(rl, "Paste your Raptor API key: ");
+        await storeRaptorApiKey(apiKey);
+      } else {
+        console.log("⚠️ No Raptor API key stored. Add one with `summon keychain store-api-key`.");
+      }
+    }
+  } catch (e) {
+    console.error("❌ Raptor API key Keychain error:", e.message);
+  }
 }
 
 const COLOR_ENABLED = process.stdout.isTTY;
@@ -419,23 +464,33 @@ async function runConfigWizard({ cfg, rl }) {
   clearScreen();
   renderWizardHeader();
   renderWizardFieldGuidance("slippage");
-  nextCfg.slippage = await promptNormalized(rl, "Max slippage (number or \"auto\")", "slippage", {
-    current: nextCfg.slippage,
-  });
+  nextCfg.slippage = await promptNormalized(
+    rl,
+    "Max slippage (percent number, or \"dynamic\")",
+    "slippage",
+    {
+      current: nextCfg.slippage,
+    }
+  );
 
   clearScreen();
   renderWizardHeader();
   renderWizardFieldGuidance("priorityFee");
-  nextCfg.priorityFee = await promptNormalized(rl, "Priority fee (auto, level, or microlamports)", "priorityFee", {
-    current: nextCfg.priorityFee,
-  });
+  nextCfg.priorityFee = await promptNormalized(
+    rl,
+    "Priority fee (\"auto\", a Raptor level, or microlamports)",
+    "priorityFee",
+    {
+      current: nextCfg.priorityFee,
+    }
+  );
 
   clearScreen();
   renderWizardHeader();
   renderWizardFieldGuidance("priorityFeeLevel");
   nextCfg.priorityFeeLevel = await promptSelect(
     rl,
-    "Priority fee level (used when priorityFee is auto)",
+    "Priority fee level (used when priorityFee is auto; Raptor default: auto)",
     PRIORITY_FEE_LEVELS,
     {
       current: nextCfg.priorityFeeLevel,
@@ -490,6 +545,12 @@ async function runConfigWizard({ cfg, rl }) {
       required: true,
     });
   }
+
+  clearScreen();
+  renderWizardHeader();
+  console.log("Raptor API key (Keychain — not written to config.json)");
+  console.log("Sent as x-api-key on every Raptor request.\n");
+  await promptRaptorApiKeyKeychain(rl);
 
   return nextCfg;
 }
@@ -736,7 +797,7 @@ configCmd
 
 configCmd
   .command("wizard")
-  .description("Interactive config editor with type validation")
+  .description("Interactive config editor (includes Raptor URL + API key Keychain step)")
   .action(async () => {
     const rl = readline.createInterface({
       input: process.stdin,
@@ -802,34 +863,7 @@ program
       console.error("❌ Keychain error:", e.message);
     }
 
-    // Raptor API key (required for swaps)
-    try {
-      if (await hasRaptorApiKey()) {
-        const updateKey = await askQuestion(
-          rl,
-          "🔑 Raptor API key already stored. Replace it? (y/N): "
-        );
-        if (updateKey.toLowerCase() === "y") {
-          const apiKey = await askSecretQuestion(rl, "Paste your Raptor API key: ");
-          await storeRaptorApiKey(apiKey);
-        } else {
-          console.log("✅ Keeping existing Raptor API key.");
-        }
-      } else {
-        const storeKey = await askQuestion(
-          rl,
-          "Store Raptor API key now? Required for swaps. (Y/n): "
-        );
-        if (storeKey.toLowerCase() !== "n") {
-          const apiKey = await askSecretQuestion(rl, "Paste your Raptor API key: ");
-          await storeRaptorApiKey(apiKey);
-        } else {
-          console.log("⚠️ No Raptor API key stored. Add one with `summon keychain store-api-key`.");
-        }
-      }
-    } catch (e) {
-      console.error("❌ Raptor API key Keychain error:", e.message);
-    }
+    // Raptor API key is already prompted inside runConfigWizard.
 
     rl.close();
     console.log("🧠 Setup complete.");

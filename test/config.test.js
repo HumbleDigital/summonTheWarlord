@@ -43,7 +43,7 @@ test("loadConfig writes defaults when missing", async () => {
 
   expect(cfg.rpcUrl).toBe("https://rpc.solanatracker.io/public?advancedTx=true");
   expect(cfg.priorityFee).toBe("auto");
-  expect(cfg.priorityFeeLevel).toBe("medium");
+  expect(cfg.priorityFeeLevel).toBe("auto");
   expect(cfg.jito).toEqual({ enabled: false, tip: 0.0001 });
   expect(cfg.notificationsEnabled).toBe(true);
 
@@ -63,7 +63,7 @@ test("loadConfig merges missing defaults", async () => {
 
   expect(cfg.rpcUrl).toBe("https://example");
   expect(cfg.slippage).toBe(5);
-  expect(cfg.priorityFeeLevel).toBe("medium");
+  expect(cfg.priorityFeeLevel).toBe("auto");
   expect(cfg.txVersion).toBe("v0");
 });
 
