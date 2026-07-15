@@ -27,7 +27,8 @@ test("normalizeConfigValue accepts notificationsEnabled boolean", () => {
 
 test("normalizeConfigValue validates priorityFeeLevel", () => {
   expect(normalizeConfigValue("priorityFeeLevel", "medium", { strict: true })).toBe("medium");
-  expect(() => normalizeConfigValue("priorityFeeLevel", "unsafeMax", { strict: true })).toThrow();
+  expect(normalizeConfigValue("priorityFeeLevel", "unsafeMax", { strict: true })).toBe("unsafeMax");
+  expect(() => normalizeConfigValue("priorityFeeLevel", "not-a-level", { strict: true })).toThrow();
 });
 
 test("normalizeConfigValue validates jito config", () => {
@@ -36,4 +37,16 @@ test("normalizeConfigValue validates jito config", () => {
     tip: 0.0001,
   });
   expect(() => normalizeConfigValue("jito", { enabled: "maybe" }, { strict: true })).toThrow();
+});
+
+test("normalizeConfigValue validates tip and raptorBaseUrl", () => {
+  expect(normalizeConfigValue("raptorBaseUrl", "https://raptor.example", { strict: true })).toBe(
+    "https://raptor.example"
+  );
+  expect(normalizeConfigValue("tip", { enabled: true, sol: 0.001, account: "", lamports: null }, { strict: true })).toEqual({
+    enabled: true,
+    sol: 0.001,
+    account: "",
+    lamports: null,
+  });
 });

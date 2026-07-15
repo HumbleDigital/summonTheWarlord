@@ -99,7 +99,13 @@ test("saveConfig persists updates with secure permissions", async () => {
   await saveConfig(newConfig);
 
   const stored = await fs.readJson(configPath);
-  expect(stored).toEqual(newConfig);
+  expect(stored).toMatchObject({
+    ...newConfig,
+    // jito.enabled migrates into tip when tip was default-off
+    tip: expect.objectContaining({ enabled: true, sol: 0.0002 }),
+    raptorBaseUrl: expect.any(String),
+    wrapUnwrapSol: true,
+  });
 
   const fileStat = await fs.stat(configPath);
   expect(fileStat.mode & 0o777).toBe(0o600);

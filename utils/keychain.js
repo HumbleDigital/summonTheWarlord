@@ -3,7 +3,8 @@ import { KeychainError } from "../lib/errors.js";
 import { logger } from "./logger.js";
 
 const SERVICE = "summonTheWarlord";
-const ACCOUNT = "wallet-private-key";
+const ACCOUNT_WALLET = "wallet-private-key";
+const ACCOUNT_RAPTOR_API_KEY = "raptor-api-key";
 
 /**
  * Normalize a pasted secret by coercing to string and trimming whitespace/newlines.
@@ -14,73 +15,151 @@ function normalizeSecret(secret) {
   return String(secret ?? "").trim();
 }
 
+async function storeSecret(account, secret, emptyMessage, successMessage, failMessage) {
+  const normalized = normalizeSecret(secret);
+  if (!normalized) {
+    throw new KeychainError(emptyMessage);
+  }
+  try {
+    await keytar.setPassword(SERVICE, account, normalized);
+    console.log(successMessage);
+  } catch (err) {
+    logger.error(failMessage, { error: err?.message });
+    throw new KeychainError(failMessage, { cause: err });
+  }
+}
+
+async function getSecret(account, missingMessage, failMessage) {
+  try {
+    const value = await keytar.getPassword(SERVICE, account);
+    if (!value) {
+      throw new KeychainError(missingMessage);
+    }
+    return value.trim();
+  } catch (err) {
+    if (err instanceof KeychainError) throw err;
+    logger.error(failMessage, { error: err?.message });
+    throw new KeychainError(failMessage, { cause: err });
+  }
+}
+
+async function hasSecret(account) {
+  try {
+    const value = await keytar.getPassword(SERVICE, account);
+    return typeof value === "string" && value.length > 0;
+  } catch (err) {
+    logger.error("Failed to check Keychain.", { error: err?.message, account });
+    return false;
+  }
+}
+
+async function deleteSecret(account, deletedMessage, missingMessage, failMessage) {
+  try {
+    const deleted = await keytar.deletePassword(SERVICE, account);
+    if (deleted) {
+      console.log(deletedMessage);
+    } else {
+      console.log(missingMessage);
+    }
+    return deleted;
+  } catch (err) {
+    logger.error(failMessage, { error: err?.message });
+    throw new KeychainError(failMessage, { cause: err });
+  }
+}
+
 /**
  * Stores the Solana private key in the macOS Keychain.
  * Accepts Base58 or a JSON array string; we store it as-is.
  * @param {string} secret - The private key string.
  */
 export async function storePrivateKey(secret) {
-  const normalized = normalizeSecret(secret);
-  if (!normalized) {
-    throw new KeychainError("No private key provided. Paste your Base58 string or JSON array.");
-  }
-  try {
-    await keytar.setPassword(SERVICE, ACCOUNT, normalized);
-    console.log("🔐 Private key securely stored in macOS Keychain.");
-  } catch (err) {
-    logger.error("Failed to store private key.", { error: err?.message });
-    throw new KeychainError("Failed to store private key in Keychain.", { cause: err });
-  }
+  return storeSecret(
+    ACCOUNT_WALLET,
+    secret,
+    "No private key provided. Paste your Base58 string or JSON array.",
+    "🔐 Private key securely stored in macOS Keychain.",
+    "Failed to store private key in Keychain."
+  );
 }
 
 /**
  * Retrieves the private key from the macOS Keychain.
- * Throws if not found.
  * @returns {Promise<string>}
  */
 export async function getPrivateKey() {
-  try {
-    const key = await keytar.getPassword(SERVICE, ACCOUNT);
-    if (!key) {
-      throw new KeychainError("Private key not found. Run `summon keychain store` to save it.");
-    }
-    return key.trim();
-  } catch (err) {
-    if (err instanceof KeychainError) throw err;
-    logger.error("Failed to read private key from Keychain.", { error: err?.message });
-    throw new KeychainError("Failed to read private key from Keychain.", { cause: err });
-  }
+  return getSecret(
+    ACCOUNT_WALLET,
+    "Private key not found. Run `summon keychain store` to save it.",
+    "Failed to read private key from Keychain."
+  );
 }
 
 /**
- * Returns true if a private key exists in the Keychain.
  * @returns {Promise<boolean>}
  */
 export async function hasPrivateKey() {
-  try {
-    const key = await keytar.getPassword(SERVICE, ACCOUNT);
-    return typeof key === "string" && key.length > 0;
-  } catch (err) {
-    logger.error("Failed to check Keychain for private key.", { error: err?.message });
-    return false;
-  }
+  return hasSecret(ACCOUNT_WALLET);
 }
 
 /**
- * Deletes the private key from Keychain.
- * @returns {Promise<boolean>} true if an entry was deleted, false if nothing existed
+ * @returns {Promise<boolean>}
  */
 export async function deletePrivateKey() {
-  try {
-    const deleted = await keytar.deletePassword(SERVICE, ACCOUNT);
-    if (deleted) {
-      console.log("💥 Private key removed from macOS Keychain.");
-    } else {
-      console.log("ℹ️ No private key found in macOS Keychain.");
-    }
-    return deleted;
-  } catch (err) {
-    logger.error("Failed to delete private key from Keychain.", { error: err?.message });
-    throw new KeychainError("Failed to delete private key from Keychain.", { cause: err });
-  }
+  return deleteSecret(
+    ACCOUNT_WALLET,
+    "💥 Private key removed from macOS Keychain.",
+    "ℹ️ No private key found in macOS Keychain.",
+    "Failed to delete private key from Keychain."
+  );
 }
+
+/**
+ * Store Raptor API key (sent as x-api-key).
+ * @param {string} secret
+ */
+export async function storeRaptorApiKey(secret) {
+  return storeSecret(
+    ACCOUNT_RAPTOR_API_KEY,
+    secret,
+    "No Raptor API key provided.",
+    "🔐 Raptor API key securely stored in macOS Keychain.",
+    "Failed to store Raptor API key in Keychain."
+  );
+}
+
+/**
+ * @returns {Promise<string>}
+ */
+export async function getRaptorApiKey() {
+  return getSecret(
+    ACCOUNT_RAPTOR_API_KEY,
+    "Raptor API key not found. Run `summon keychain store-api-key` to save it.",
+    "Failed to read Raptor API key from Keychain."
+  );
+}
+
+/**
+ * @returns {Promise<boolean>}
+ */
+export async function hasRaptorApiKey() {
+  return hasSecret(ACCOUNT_RAPTOR_API_KEY);
+}
+
+/**
+ * @returns {Promise<boolean>}
+ */
+export async function deleteRaptorApiKey() {
+  return deleteSecret(
+    ACCOUNT_RAPTOR_API_KEY,
+    "💥 Raptor API key removed from macOS Keychain.",
+    "ℹ️ No Raptor API key found in macOS Keychain.",
+    "Failed to delete Raptor API key from Keychain."
+  );
+}
+
+export const KEYCHAIN_ACCOUNTS = Object.freeze({
+  wallet: ACCOUNT_WALLET,
+  raptorApiKey: ACCOUNT_RAPTOR_API_KEY,
+  service: SERVICE,
+});

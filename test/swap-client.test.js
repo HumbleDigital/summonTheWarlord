@@ -9,7 +9,6 @@ describe("swap client memoization", () => {
   test("reuses memoized client and warns once for conflicting cfg rpcUrl", async () => {
     const loggerWarn = jest.fn();
 
-    jest.unstable_mockModule("solana-swap", () => ({ SolanaTracker: class {} }));
     jest.unstable_mockModule("../utils/logger.js", () => ({ logger: { warn: loggerWarn, error: jest.fn() } }));
 
     const { getSwapClient, setSwapClientFactory } = await import("../lib/swapClient.js");
@@ -28,14 +27,13 @@ describe("swap client memoization", () => {
     expect(factory).toHaveBeenCalledTimes(1);
     expect(loggerWarn).toHaveBeenCalledTimes(1);
     expect(loggerWarn).toHaveBeenCalledWith(
-      "getSwapClient received cfg.rpcUrl that differs from the memoized client; reusing existing client."
+      "getSwapClient received cfg that differs from the memoized client; reusing existing client."
     );
   });
 
   test("does not warn when follow-up cfg resolves to the same advancedTx rpcUrl", async () => {
     const loggerWarn = jest.fn();
 
-    jest.unstable_mockModule("solana-swap", () => ({ SolanaTracker: class {} }));
     jest.unstable_mockModule("../utils/logger.js", () => ({ logger: { warn: loggerWarn, error: jest.fn() } }));
 
     const { getSwapClient, setSwapClientFactory } = await import("../lib/swapClient.js");

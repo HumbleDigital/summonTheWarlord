@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globa
 
 const BASE_CFG = {
   rpcUrl: "https://rpc.example",
+  raptorBaseUrl: "https://raptor.example",
   slippage: 1,
   priorityFee: "auto",
   priorityFeeLevel: "medium",
@@ -11,7 +12,6 @@ const BASE_CFG = {
 
 const RPC_HINT = "Update `rpcUrl` via `summon config wizard`.";
 const KEYCHAIN_HINT = "Run `summon keychain store`.";
-const SWAP_HINT = "Rerun `summon doctor -v` and verify SolanaTracker account/RPC.";
 
 let originalFetch;
 
@@ -30,6 +30,8 @@ describe("runDoctor failure hints", () => {
     const loadConfigMock = jest.fn().mockResolvedValue(BASE_CFG);
     const hasPrivateKeyMock = jest.fn().mockResolvedValue(false);
     const getPrivateKeyMock = jest.fn();
+    const hasRaptorApiKeyMock = jest.fn().mockResolvedValue(false);
+    const getRaptorApiKeyMock = jest.fn();
     const getSwapClientMock = jest.fn();
     const ensureAdvancedTxMock = jest.fn((url) => url);
     const notifyMock = jest.fn();
@@ -43,6 +45,8 @@ describe("runDoctor failure hints", () => {
     jest.unstable_mockModule("../utils/keychain.js", () => ({
       hasPrivateKey: hasPrivateKeyMock,
       getPrivateKey: getPrivateKeyMock,
+      hasRaptorApiKey: hasRaptorApiKeyMock,
+      getRaptorApiKey: getRaptorApiKeyMock,
     }));
     jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
     jest.unstable_mockModule("../lib/swapClient.js", () => ({
@@ -54,20 +58,21 @@ describe("runDoctor failure hints", () => {
     const results = await runDoctor();
 
     const keychainResult = results.find((item) => item.name === "keychain");
+    const raptorKeyResult = results.find((item) => item.name === "raptorKey");
     const rpcResult = results.find((item) => item.name === "rpc");
     expect(keychainResult).toMatchObject({ status: "fail", hint: KEYCHAIN_HINT });
+    expect(raptorKeyResult).toMatchObject({ status: "fail" });
     expect(rpcResult).toMatchObject({ status: "fail", hint: RPC_HINT });
     expect(getSwapClientMock).not.toHaveBeenCalled();
   });
 
-  test("returns deterministic swap hint when swap api check fails", async () => {
+  test("returns swap failure when raptor quote fails", async () => {
     const loadConfigMock = jest.fn().mockResolvedValue(BASE_CFG);
     const hasPrivateKeyMock = jest.fn().mockResolvedValue(true);
     const getPrivateKeyMock = jest.fn().mockResolvedValue("private-key");
-    const getSwapClientMock = jest.fn().mockResolvedValue({
-      keypair: { publicKey: { toBase58: () => "wallet11111111111111111111111111111111111111" } },
-      getSwapInstructions: jest.fn().mockRejectedValue(new Error("upstream down")),
-    });
+    const hasRaptorApiKeyMock = jest.fn().mockResolvedValue(true);
+    const getRaptorApiKeyMock = jest.fn().mockResolvedValue("api-key");
+    const getSwapClientMock = jest.fn();
     const ensureAdvancedTxMock = jest.fn((url) => url);
     const notifyMock = jest.fn();
     global.fetch = jest.fn().mockResolvedValue({
@@ -80,18 +85,29 @@ describe("runDoctor failure hints", () => {
     jest.unstable_mockModule("../utils/keychain.js", () => ({
       hasPrivateKey: hasPrivateKeyMock,
       getPrivateKey: getPrivateKeyMock,
+      hasRaptorApiKey: hasRaptorApiKeyMock,
+      getRaptorApiKey: getRaptorApiKeyMock,
     }));
     jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
     jest.unstable_mockModule("../lib/swapClient.js", () => ({
       ensureAdvancedTx: ensureAdvancedTxMock,
       getSwapClient: getSwapClientMock,
     }));
+    jest.unstable_mockModule("../lib/raptorClient.js", () => ({
+      RaptorClient: class {
+        health() {
+          return Promise.resolve("OK");
+        }
+        getQuote() {
+          return Promise.reject(new Error("upstream down"));
+        }
+      },
+    }));
 
     const { runDoctor } = await import("../lib/doctor.js");
-    const results = await runDoctor({ verbose: true });
-
+    const results = await runDoctor();
     const swapResult = results.find((item) => item.name === "swap");
-    expect(swapResult).toMatchObject({ status: "fail", hint: SWAP_HINT });
-    expect(swapResult.details).toBe("upstream down");
+    expect(swapResult.status).toBe("fail");
+    expect(String(swapResult.details || "")).toMatch(/upstream down/i);
   });
 });

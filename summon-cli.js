@@ -12,7 +12,16 @@ import {
   PRIORITY_FEE_LEVELS,
   TX_VERSIONS,
 } from "./lib/config.js";
-import { storePrivateKey, getPrivateKey, deletePrivateKey, hasPrivateKey } from "./utils/keychain.js";
+import {
+  storePrivateKey,
+  getPrivateKey,
+  deletePrivateKey,
+  hasPrivateKey,
+  storeRaptorApiKey,
+  hasRaptorApiKey,
+  deleteRaptorApiKey,
+  getRaptorApiKey,
+} from "./utils/keychain.js";
 import readline from "readline";
 import { notify } from "./utils/notify.js";
 import { runDoctor } from "./lib/doctor.js";
@@ -25,25 +34,44 @@ program
   .showHelpAfterError(); // show help after invalid flags/args
 
 const CONFIG_KEY_SET = new Set([
-  ...CONFIG_KEYS.filter((key) => key !== "jito"),
+  ...CONFIG_KEYS.filter((key) => key !== "jito" && key !== "tip"),
   "jito.enabled",
   "jito.tip",
+  "tip.enabled",
+  "tip.sol",
+  "tip.account",
+  "tip.lamports",
 ]);
 const CONFIG_HELP = [
   { key: "rpcUrl", type: "string", note: "RPC URL (advancedTx=true is enforced)" },
-  { key: "slippage", type: "number | auto", note: "Max slippage percentage" },
-  { key: "priorityFee", type: "number | auto", note: "Priority fee in SOL" },
+  { key: "raptorBaseUrl", type: "string", note: "Raptor swap API base URL" },
+  { key: "slippage", type: "number | auto", note: "Max slippage percentage (auto → dynamic bps)" },
+  { key: "priorityFee", type: "auto | level | microlamports", note: "Priority fee mode for Raptor" },
   {
     key: "priorityFeeLevel",
     type: PRIORITY_FEE_LEVELS.join(" | "),
-    note: "Required when priorityFee=auto",
+    note: "Used when priorityFee=auto",
   },
-  { key: "txVersion", type: TX_VERSIONS.join(" | "), note: "Transaction version" },
+  { key: "maxPriorityFee", type: "number | empty", note: "Cap dynamic priority fees (lamports)" },
+  { key: "computeUnitPriceMicroLamports", type: "number | empty", note: "Override CU price" },
+  { key: "computeUnitLimit", type: "number | empty", note: "Override CU limit" },
+  { key: "txVersion", type: TX_VERSIONS.join(" | "), note: "Transaction version (sent as V0/LEGACY)" },
+  { key: "wrapUnwrapSol", type: "true | false", note: "Auto wrap/unwrap SOL in swaps" },
+  { key: "dexes", type: "string", note: "Comma-separated DEX allowlist" },
+  { key: "pools", type: "string", note: "Comma-separated pool allowlist" },
+  { key: "maxHops", type: "number | empty", note: "Max route hops (1-4)" },
+  { key: "onlyDirectRoutes", type: "true | false", note: "Force direct routes only" },
+  { key: "destinationTokenAccount", type: "string", note: "Optional destination token account" },
+  { key: "chargeBps", type: "number | empty", note: "Extra charge on positive slippage (bps)" },
+  { key: "tip.enabled", type: "true | false", note: "Attach SOL tip to swap" },
+  { key: "tip.sol", type: "number", note: "Tip amount in SOL (converted to lamports)" },
+  { key: "tip.account", type: "string", note: "Optional tip account pubkey" },
+  { key: "tip.lamports", type: "number | empty", note: "Tip amount in lamports (overrides tip.sol)" },
   { key: "showQuoteDetails", type: "true | false", note: "Print quote details after swaps" },
-  { key: "DEBUG_MODE", type: "true | false", note: "Enable verbose SDK logs" },
+  { key: "DEBUG_MODE", type: "true | false", note: "Enable verbose logs" },
   { key: "notificationsEnabled", type: "true | false", note: "Enable macOS notifications" },
-  { key: "jito.enabled", type: "true | false", note: "Enable Jito bundles" },
-  { key: "jito.tip", type: "number", note: "Tip in SOL when Jito enabled" },
+  { key: "jito.enabled", type: "true | false", note: "Legacy; migrated into tip.enabled" },
+  { key: "jito.tip", type: "number", note: "Legacy tip SOL; migrated into tip.sol" },
 ];
 const WIZARD_FIELD_GUIDANCE = {
   rpcUrl: {
@@ -51,19 +79,24 @@ const WIZARD_FIELD_GUIDANCE = {
     recommended: "Your dedicated SolanaTracker endpoint",
     defaultValue: DEFAULT_CONFIG.rpcUrl,
   },
+  raptorBaseUrl: {
+    helper: "Hosted Raptor swap API base URL (no trailing slash required).",
+    recommended: DEFAULT_CONFIG.raptorBaseUrl,
+    defaultValue: DEFAULT_CONFIG.raptorBaseUrl,
+  },
   slippage: {
-    helper: "Max swap slippage percent. Use auto to let the backend choose dynamically.",
+    helper: "Max swap slippage percent. Use auto to let Raptor choose dynamically.",
     recommended: DEFAULT_CONFIG.slippage,
     defaultValue: DEFAULT_CONFIG.slippage,
   },
   priorityFee: {
     helper:
-      "Use auto for adaptive fees, or set a fixed SOL value (example: 0.0005). When set to auto, priorityFeeLevel controls aggressiveness.",
+      "Use auto + priorityFeeLevel for Raptor levels, or set microlamports as a number.",
     recommended: `${DEFAULT_CONFIG.priorityFee} + ${DEFAULT_CONFIG.priorityFeeLevel}`,
     defaultValue: DEFAULT_CONFIG.priorityFee,
   },
   priorityFeeLevel: {
-    helper: "Used only when priorityFee is auto. Fixed priorityFee values ignore this setting.",
+    helper: "Used when priorityFee is auto. Raptor levels: min, low, medium, high, veryHigh, turbo, unsafeMax.",
     recommended: DEFAULT_CONFIG.priorityFeeLevel,
     defaultValue: DEFAULT_CONFIG.priorityFeeLevel,
   },
@@ -78,7 +111,7 @@ const WIZARD_FIELD_GUIDANCE = {
     defaultValue: DEFAULT_CONFIG.showQuoteDetails,
   },
   DEBUG_MODE: {
-    helper: "Verbose SDK/network logging. Useful for diagnostics, noisy for regular trading.",
+    helper: "Verbose network logging. Useful for diagnostics, noisy for regular trading.",
     recommended: DEFAULT_CONFIG.DEBUG_MODE,
     defaultValue: DEFAULT_CONFIG.DEBUG_MODE,
   },
@@ -87,15 +120,15 @@ const WIZARD_FIELD_GUIDANCE = {
     recommended: DEFAULT_CONFIG.notificationsEnabled,
     defaultValue: DEFAULT_CONFIG.notificationsEnabled,
   },
-  jitoEnabled: {
-    helper: "Bundle via Jito relays. Keep disabled unless you intentionally use Jito flow.",
-    recommended: DEFAULT_CONFIG.jito.enabled,
-    defaultValue: DEFAULT_CONFIG.jito.enabled,
+  tipEnabled: {
+    helper: "Attach an optional SOL tip to Raptor-built swaps.",
+    recommended: DEFAULT_CONFIG.tip.enabled,
+    defaultValue: DEFAULT_CONFIG.tip.enabled,
   },
-  jitoTip: {
-    helper: "Tip in SOL attached to Jito bundles when enabled.",
-    recommended: DEFAULT_CONFIG.jito.tip,
-    defaultValue: DEFAULT_CONFIG.jito.tip,
+  tipSol: {
+    helper: "Tip in SOL when tip.enabled is true (unless tip.lamports is set).",
+    recommended: DEFAULT_CONFIG.tip.sol,
+    defaultValue: DEFAULT_CONFIG.tip.sol,
   },
 };
 
@@ -278,20 +311,25 @@ function renderStatusBox({ title, rows, tone }) {
 }
 
 function renderConfigSummary(cfg, configPath, title = "CONFIG") {
-  const jitoEnabled = cfg.jito?.enabled ? "true" : "false";
-  const jitoTip = cfg.jito?.enabled ? cfg.jito.tip : "-";
+  const tipEnabled = cfg.tip?.enabled ? "true" : "false";
+  const tipSol = cfg.tip?.enabled ? cfg.tip.sol : "-";
   const rows = [
     ["Config path", configPath],
     ["RPC URL", formatConfigDisplayValue("rpcUrl", cfg.rpcUrl)],
+    ["Raptor URL", cfg.raptorBaseUrl],
     ["Slippage", cfg.slippage],
     ["Priority fee", cfg.priorityFee],
     ["Priority level", cfg.priorityFeeLevel],
     ["Tx version", cfg.txVersion],
+    ["Wrap/unwrap SOL", cfg.wrapUnwrapSol],
+    ["DEX allowlist", cfg.dexes || "-"],
+    ["Max hops", cfg.maxHops ?? "-"],
+    ["Direct routes only", cfg.onlyDirectRoutes],
     ["Show quote", cfg.showQuoteDetails],
     ["Debug mode", cfg.DEBUG_MODE],
     ["Notifications", cfg.notificationsEnabled],
-    ["Jito enabled", jitoEnabled],
-    ["Jito tip (SOL)", jitoTip],
+    ["Tip enabled", tipEnabled],
+    ["Tip (SOL)", tipSol],
   ];
   console.log(formatBox({ title, rows }));
 }
@@ -360,12 +398,23 @@ async function promptNumber(rl, label, { current, required = false } = {}) {
 }
 
 async function runConfigWizard({ cfg, rl }) {
-  const nextCfg = { ...cfg, jito: { ...DEFAULT_CONFIG.jito, ...(cfg.jito || {}) } };
+  const nextCfg = {
+    ...cfg,
+    jito: { ...DEFAULT_CONFIG.jito, ...(cfg.jito || {}) },
+    tip: { ...DEFAULT_CONFIG.tip, ...(cfg.tip || {}) },
+  };
 
   clearScreen();
   renderWizardHeader();
   renderWizardFieldGuidance("rpcUrl");
   nextCfg.rpcUrl = await promptNormalized(rl, "RPC URL", "rpcUrl", { current: nextCfg.rpcUrl });
+
+  clearScreen();
+  renderWizardHeader();
+  renderWizardFieldGuidance("raptorBaseUrl");
+  nextCfg.raptorBaseUrl = await promptNormalized(rl, "Raptor base URL", "raptorBaseUrl", {
+    current: nextCfg.raptorBaseUrl,
+  });
 
   clearScreen();
   renderWizardHeader();
@@ -377,7 +426,7 @@ async function runConfigWizard({ cfg, rl }) {
   clearScreen();
   renderWizardHeader();
   renderWizardFieldGuidance("priorityFee");
-  nextCfg.priorityFee = await promptNormalized(rl, "Priority fee (number or \"auto\")", "priorityFee", {
+  nextCfg.priorityFee = await promptNormalized(rl, "Priority fee (auto, level, or microlamports)", "priorityFee", {
     current: nextCfg.priorityFee,
   });
 
@@ -427,19 +476,18 @@ async function runConfigWizard({ cfg, rl }) {
 
   clearScreen();
   renderWizardHeader();
-  renderWizardFieldGuidance("jitoEnabled");
-  const jitoEnabled = await promptSelect(rl, "Enable Jito bundles", ["true", "false"], {
-    current: nextCfg.jito.enabled ? "true" : "false",
+  renderWizardFieldGuidance("tipEnabled");
+  const tipEnabled = await promptSelect(rl, "Enable SOL tips on swaps", ["true", "false"], {
+    current: nextCfg.tip.enabled ? "true" : "false",
   });
-  nextCfg.jito.enabled = jitoEnabled === "true";
-  if (nextCfg.jito.enabled) {
+  nextCfg.tip.enabled = tipEnabled === "true";
+  if (nextCfg.tip.enabled) {
     clearScreen();
     renderWizardHeader();
-    renderWizardFieldGuidance("jitoTip");
-    const requireTip = nextCfg.jito.tip === undefined || nextCfg.jito.tip === null;
-    nextCfg.jito.tip = await promptNumber(rl, "Jito tip (SOL)", {
-      current: nextCfg.jito.tip,
-      required: requireTip,
+    renderWizardFieldGuidance("tipSol");
+    nextCfg.tip.sol = await promptNumber(rl, "Tip amount (SOL)", {
+      current: nextCfg.tip.sol,
+      required: true,
     });
   }
 
@@ -646,6 +694,10 @@ configCmd
         const field = key.split(".")[1];
         const nextJito = { ...(cfg.jito || DEFAULT_CONFIG.jito), [field]: parsedValue };
         cfg.jito = normalizeConfigValue("jito", nextJito, { strict: true });
+      } else if (key.startsWith("tip.")) {
+        const field = key.split(".")[1];
+        const nextTip = { ...(cfg.tip || DEFAULT_CONFIG.tip), [field]: parsedValue };
+        cfg.tip = normalizeConfigValue("tip", nextTip, { strict: true });
       } else {
         const normalizedValue = normalizeConfigValue(key, parsedValue, { strict: true });
         cfg[key] = normalizedValue;
@@ -660,9 +712,14 @@ configCmd
       process.exit(1);
     }
     await saveConfig(cfg);
-    const displayValue = key.startsWith("jito.")
-      ? toDisplayValue(cfg.jito?.[key.split(".")[1]])
-      : formatConfigDisplayValue(key, cfg[key]);
+    let displayValue;
+    if (key.startsWith("jito.")) {
+      displayValue = toDisplayValue(cfg.jito?.[key.split(".")[1]]);
+    } else if (key.startsWith("tip.")) {
+      displayValue = toDisplayValue(cfg.tip?.[key.split(".")[1]]);
+    } else {
+      displayValue = formatConfigDisplayValue(key, cfg[key]);
+    }
     console.log(`✅  Updated ${key} → ${displayValue} in ${configPath}`);
     renderConfigSummary(cfg, configPath);
   });
@@ -745,6 +802,35 @@ program
       console.error("❌ Keychain error:", e.message);
     }
 
+    // Raptor API key (required for swaps)
+    try {
+      if (await hasRaptorApiKey()) {
+        const updateKey = await askQuestion(
+          rl,
+          "🔑 Raptor API key already stored. Replace it? (y/N): "
+        );
+        if (updateKey.toLowerCase() === "y") {
+          const apiKey = await askSecretQuestion(rl, "Paste your Raptor API key: ");
+          await storeRaptorApiKey(apiKey);
+        } else {
+          console.log("✅ Keeping existing Raptor API key.");
+        }
+      } else {
+        const storeKey = await askQuestion(
+          rl,
+          "Store Raptor API key now? Required for swaps. (Y/n): "
+        );
+        if (storeKey.toLowerCase() !== "n") {
+          const apiKey = await askSecretQuestion(rl, "Paste your Raptor API key: ");
+          await storeRaptorApiKey(apiKey);
+        } else {
+          console.log("⚠️ No Raptor API key stored. Add one with `summon keychain store-api-key`.");
+        }
+      }
+    } catch (e) {
+      console.error("❌ Raptor API key Keychain error:", e.message);
+    }
+
     rl.close();
     console.log("🧠 Setup complete.");
 
@@ -767,7 +853,7 @@ program
   });
 
 // KEYCHAIN subcommands
-const keychainCmd = program.command("keychain").description("Manage private key storage in macOS Keychain");
+const keychainCmd = program.command("keychain").description("Manage secrets in macOS Keychain");
 
 keychainCmd
   .command("store")
@@ -781,11 +867,29 @@ keychainCmd
       const input = await askSecretQuestion(rl, "Paste your wallet private key: ");
       rl.close();
       await storePrivateKey(input);
-      console.log("🔐 Private key securely stored in macOS Keychain.");
       printKeychainAccessHint();
     } catch (err) {
       rl.close();
       console.error("❌ Failed to store key:", err.message);
+      process.exitCode = 1;
+    }
+  });
+
+keychainCmd
+  .command("store-api-key")
+  .description("Store Raptor API key (x-api-key) in macOS Keychain")
+  .action(async () => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    try {
+      const input = await askSecretQuestion(rl, "Paste your Raptor API key: ");
+      rl.close();
+      await storeRaptorApiKey(input);
+    } catch (err) {
+      rl.close();
+      console.error("❌ Failed to store Raptor API key:", err.message);
       process.exitCode = 1;
     }
   });
@@ -803,11 +907,29 @@ keychainCmd
   });
 
 keychainCmd
+  .command("unlock-api-key")
+  .description("Test retrieval of Raptor API key from macOS Keychain")
+  .action(async () => {
+    try {
+      const key = await getRaptorApiKey();
+      if (key) console.log("🔓 Raptor API key retrieved successfully.");
+    } catch (err) {
+      console.error("❌ Failed to retrieve Raptor API key:", err.message);
+    }
+  });
+
+keychainCmd
   .command("delete")
   .description("Delete the private key from macOS Keychain")
   .action(async () => {
     await deletePrivateKey();
-    console.log("💥 Private key deleted from macOS Keychain.");
+  });
+
+keychainCmd
+  .command("delete-api-key")
+  .description("Delete the Raptor API key from macOS Keychain")
+  .action(async () => {
+    await deleteRaptorApiKey();
   });
 
 program
@@ -847,32 +969,13 @@ program
   .alias("w")
   .description("Open your wallet in the browser via SolanaTracker.io")
   .action(async () => {
-    // Lazy-load heavier deps only when wallet command runs
-    const [{ Keypair }, { default: bs58 }, { default: open }] = await Promise.all([
-      import("@solana/web3.js"),
-      import("bs58"),
-      import("open"),
-    ]);
     try {
-      const rawKey = await getPrivateKey();
-      let keypair;
-
-      try {
-        // Try base58 format
-        const bytes = bs58.decode(rawKey);
-        keypair = Keypair.fromSecretKey(bytes);
-      } catch {
-        try {
-          // Try JSON array format
-          const arr = JSON.parse(rawKey);
-          if (!Array.isArray(arr)) throw new Error("Not an array");
-          keypair = Keypair.fromSecretKey(Uint8Array.from(arr));
-        } catch {
-          throw new Error("Private key is neither base58 nor valid JSON array.");
-        }
-      }
-
-      const pubkey = keypair.publicKey.toBase58();
+      const [{ loadWalletSigner }, { default: open }] = await Promise.all([
+        import("./lib/wallet.js"),
+        import("open"),
+      ]);
+      const signer = await loadWalletSigner();
+      const pubkey = signer.address;
       const url = `https://www.solanatracker.io/wallet/${pubkey}`;
       console.log(`🌐 Opening wallet in browser: ${url}`);
       await open(url);
@@ -943,11 +1046,11 @@ program
 
 FIRST TIME QUICKSTART:
   1) summon setup
-     Saves config + stores your private key in Keychain.
+     Saves config + wallet key + Raptor API key in Keychain.
   2) summon config wizard
-     Review RPC, fees, slippage, notifications, and Jito.
+     Review RPC, Raptor URL, fees, slippage, tips, notifications.
   3) summon doctor
-     Confirms RPC + swap API are healthy.
+     Confirms RPC + Raptor swap API are healthy.
   4) summon buy <mint> 0.01
      Start small while you learn.
 
@@ -959,7 +1062,7 @@ TERMS:
 
 USAGE:
   summon setup
-      Run initial setup wizard (RPC, slippage, priority fees, Jito, etc.)
+      Run initial setup wizard (RPC, Raptor URL, fees, tips, Keychain secrets)
 
   summon config view
       View current configuration
@@ -980,11 +1083,20 @@ USAGE:
       Store your private key in the macOS Keychain (recommended)
         • Paste either a base58-encoded string OR a JSON array like [12, 34, ...]
 
+  summon keychain store-api-key
+      Store Raptor API key (sent as x-api-key header)
+
   summon keychain unlock
-      Retrieve and verify your stored key
+      Retrieve and verify your stored wallet key
+
+  summon keychain unlock-api-key
+      Verify Raptor API key is readable
 
   summon keychain delete
       Delete the private key from macOS Keychain
+
+  summon keychain delete-api-key
+      Delete the Raptor API key from macOS Keychain
 
   summon buy [mint] [amount]
   summon sell [mint] [amount]
@@ -1004,16 +1116,14 @@ USAGE:
       Display this manual
 
 NOTES:
-  • This tool relies on SolanaTracker.io as its backend and won't work without them.
-      You can use the default RPC URL, but may see errors and issues because it’s free & public.
-      Signup for a free account here: https://www.solanatracker.io/solana-rpc
-      Use the new URL you are assigned in the config file.
-  • You may see errors about rate limits.  This is largely due to using the free endpoint,
-      but they do happen occasionally.  Your trade may still go through because those errors happen
-      while we're waiting for trade confirmation.
+  • Swaps use Solana Tracker's Raptor API (quote → sign with Kit → send).
+      Default base URL: https://raptor-beta.solanatracker.io (override with raptorBaseUrl).
+      Raptor API key is required (Keychain: summon keychain store-api-key).
+  • RPC still comes from SolanaTracker for balances/decimals/doctor.
+      Signup: https://www.solanatracker.io/solana-rpc
   • Use summon buy or summon sell for trades
   • Buying with "auto" is NOT supported — use a number or percent
-  • Your private key is never stored in plain text — use the Keychain for secure access
+  • Secrets (wallet + Raptor API key) live in macOS Keychain only
   • Notifications are optional. Toggle notificationsEnabled in config if you want silence.
   • Swaps show Pending → Success/Failed panes. If Verification is pending, open:
       https://orbmarkets.io/tx/<txid>

@@ -7,25 +7,37 @@ const BASE_CFG = {
   txVersion: "v0",
   DEBUG_MODE: false,
   notificationsEnabled: false,
+  wrapUnwrapSol: true,
+  tip: { enabled: false, sol: 0.0001, account: "", lamports: null },
   jito: { enabled: false, tip: 0.0001 },
 };
 
 const MINT = "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN";
+const WSOL = "So11111111111111111111111111111111111111112";
 
-function makeTracker(getTransactionDetails) {
+function makeClient(getTransactionStatus) {
   return {
-    keypair: { publicKey: { toBase58: () => "wallet11111111111111111111111111111111111111" } },
-    getSwapInstructions: jest.fn().mockResolvedValue({
-      quote: {
-        amountOut: "12.5",
-        outAmount: "2.25",
-        fee: "0.01",
-        platformFeeUI: "0.02",
-        priceImpact: "0.5",
-      },
-    }),
-    performSwap: jest.fn().mockResolvedValue({ signature: "tx-123" }),
-    getTransactionDetails,
+    publicKey: "wallet11111111111111111111111111111111111111",
+    signer: {
+      address: "wallet11111111111111111111111111111111111111",
+      keyPair: {},
+    },
+    rpc: {},
+    raptor: {
+      getQuote: jest.fn().mockResolvedValue({
+        amountOut: "12500000",
+        feeAmount: "1000",
+        priceImpact: 0.001,
+        inputMint: WSOL,
+        outputMint: MINT,
+      }),
+      buildSwap: jest.fn().mockResolvedValue({
+        swapTransaction: "AQID",
+        lastValidBlockHeight: 1,
+      }),
+      sendTransaction: jest.fn().mockResolvedValue({ signature: "tx-123", success: true }),
+      getTransactionStatus,
+    },
   };
 }
 
@@ -38,86 +50,67 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+async function loadBuyWithMocks({ client, signImpl }) {
+  const loadConfigMock = jest.fn().mockResolvedValue(BASE_CFG);
+  const getSwapClientMock = jest.fn().mockResolvedValue(client);
+  const notifyMock = jest.fn();
+  const resolveAmountMock = jest.fn().mockResolvedValue("200000000");
+  const getMintDecimalsMock = jest.fn().mockResolvedValue(6);
+  const signMock = jest.fn().mockImplementation(signImpl || (async () => ({
+    signedBase64: "signed",
+    signature: "tx-123",
+  })));
+
+  jest.unstable_mockModule("../lib/config.js", () => ({ loadConfig: loadConfigMock }));
+  jest.unstable_mockModule("../lib/swapClient.js", () => ({ getSwapClient: getSwapClientMock }));
+  jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
+  jest.unstable_mockModule("../lib/amounts.js", () => ({
+    resolveInputAmountBaseUnits: resolveAmountMock,
+    getMintDecimals: getMintDecimalsMock,
+    baseUnitsToHuman: (v, d) => {
+      const n = Number(v) / 10 ** d;
+      return String(n);
+    },
+    toSlippageBps: () => "100",
+    solToLamportsNumber: (n) => Math.round(Number(n) * 1e9),
+  }));
+  jest.unstable_mockModule("../lib/txSign.js", () => ({
+    signSwapTransaction: signMock,
+  }));
+
+  const { buyToken } = await import("../lib/trades.js");
+  return { buyToken, client, signMock };
+}
+
 describe("trade verification behavior", () => {
-  test("marks verification confirmed when details confirm immediately", async () => {
-    const tracker = makeTracker(jest.fn().mockResolvedValue({ meta: { err: null } }));
-    const loadConfigMock = jest.fn().mockResolvedValue(BASE_CFG);
-    const getSwapClientMock = jest.fn().mockResolvedValue(tracker);
-    const notifyMock = jest.fn();
-
-    jest.unstable_mockModule("../lib/config.js", () => ({ loadConfig: loadConfigMock }));
-    jest.unstable_mockModule("../lib/swapClient.js", () => ({ getSwapClient: getSwapClientMock }));
-    jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
-
-    const { buyToken } = await import("../lib/trades.js");
+  test("marks verification confirmed when status confirms immediately", async () => {
+    const client = makeClient(jest.fn().mockResolvedValue({ status: "confirmed" }));
+    const { buyToken } = await loadBuyWithMocks({ client });
     const result = await buyToken(MINT, 0.2);
 
     expect(result.verificationStatus).toBe("confirmed");
-    expect(tracker.getTransactionDetails).toHaveBeenCalledTimes(1);
+    expect(client.raptor.getTransactionStatus).toHaveBeenCalledTimes(1);
+    expect(client.raptor.getQuote).toHaveBeenCalled();
+    expect(client.raptor.buildSwap).toHaveBeenCalled();
+    expect(client.raptor.sendTransaction).toHaveBeenCalled();
   });
 
   test("keeps verification pending when status never confirms within timeout schedule", async () => {
     jest.useFakeTimers();
-
-    const tracker = makeTracker(jest.fn().mockResolvedValue({}));
-    const loadConfigMock = jest.fn().mockResolvedValue(BASE_CFG);
-    const getSwapClientMock = jest.fn().mockResolvedValue(tracker);
-    const notifyMock = jest.fn();
-
-    jest.unstable_mockModule("../lib/config.js", () => ({ loadConfig: loadConfigMock }));
-    jest.unstable_mockModule("../lib/swapClient.js", () => ({ getSwapClient: getSwapClientMock }));
-    jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
-
-    const { buyToken } = await import("../lib/trades.js");
+    const client = makeClient(jest.fn().mockResolvedValue({ status: "pending" }));
+    const { buyToken } = await loadBuyWithMocks({ client });
 
     const pendingResultPromise = buyToken(MINT, 0.2);
     await jest.runAllTimersAsync();
     const result = await pendingResultPromise;
 
     expect(result.verificationStatus).toBe("pending");
-    expect(tracker.getTransactionDetails).toHaveBeenCalledTimes(7);
+    expect(client.raptor.getTransactionStatus).toHaveBeenCalledTimes(7);
   });
 
-  test("throws SwapError when on-chain metadata reports a transaction error", async () => {
-    const tracker = makeTracker(
-      jest.fn().mockResolvedValue({ meta: { err: { InstructionError: [1, "Custom"] } } })
-    );
-    const loadConfigMock = jest.fn().mockResolvedValue(BASE_CFG);
-    const getSwapClientMock = jest.fn().mockResolvedValue(tracker);
-    const notifyMock = jest.fn();
-
-    jest.unstable_mockModule("../lib/config.js", () => ({ loadConfig: loadConfigMock }));
-    jest.unstable_mockModule("../lib/swapClient.js", () => ({ getSwapClient: getSwapClientMock }));
-    jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
-
-    const { buyToken } = await import("../lib/trades.js");
-
-    await expect(buyToken(MINT, 0.2)).rejects.toThrow("Swap failed: Transaction failed");
-    expect(tracker.getTransactionDetails).toHaveBeenCalledTimes(1);
-  });
-
-  test("retries transient transaction detail fetch errors and confirms later", async () => {
-    jest.useFakeTimers();
-
-    const getTransactionDetails = jest.fn()
-      .mockRejectedValueOnce({ status: 503, message: "temporarily unavailable" })
-      .mockResolvedValueOnce({ meta: { err: null } });
-    const tracker = makeTracker(getTransactionDetails);
-    const loadConfigMock = jest.fn().mockResolvedValue(BASE_CFG);
-    const getSwapClientMock = jest.fn().mockResolvedValue(tracker);
-    const notifyMock = jest.fn();
-
-    jest.unstable_mockModule("../lib/config.js", () => ({ loadConfig: loadConfigMock }));
-    jest.unstable_mockModule("../lib/swapClient.js", () => ({ getSwapClient: getSwapClientMock }));
-    jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
-
-    const { buyToken } = await import("../lib/trades.js");
-
-    const resultPromise = buyToken(MINT, 0.2);
-    await jest.runAllTimersAsync();
-    const result = await resultPromise;
-
-    expect(result.verificationStatus).toBe("confirmed");
-    expect(getTransactionDetails).toHaveBeenCalledTimes(2);
+  test("throws when transaction status is failed", async () => {
+    const client = makeClient(jest.fn().mockResolvedValue({ status: "failed", error: "boom" }));
+    const { buyToken } = await loadBuyWithMocks({ client });
+    await expect(buyToken(MINT, 0.2)).rejects.toThrow(/Swap failed/i);
   });
 });

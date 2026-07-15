@@ -47,3 +47,17 @@ that introduce new lockfile packages with install scripts.
 Production dependency changes that affect key storage, Solana RPC, swap
 construction, signing, or HTTP transport require manual review and trade-path
 verification before release.
+
+### High-sensitivity dependencies
+
+| Area | Packages / services | Notes |
+|---|---|---|
+| Key storage | `keytar` | Native install scripts; macOS Keychain for wallet + Raptor API key. Preserve service/account names on migrations. |
+| Swap execution | Raptor HTTP API | Base URL configurable; requires `x-api-key`. Quote/build/send must be verified after URL or field changes. |
+| Signing / RPC | `@solana/kit`, `bs58` | Kit signs Raptor wire transactions and reads balances; keep surface intentional. |
+
+### Planned hardening (see `docs/ROADMAP.md`)
+
+- Replace unmaintained Keychain bindings when a maintained macOS-safe alternative is validated.
+- Align GitHub Actions majors via Dependabot for the Actions ecosystem.
+- Track Raptor GA endpoint when beta ends; keep `raptorBaseUrl` overridable.

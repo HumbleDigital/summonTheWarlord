@@ -15,8 +15,10 @@
 ## Requirements
 
 - Node.js >= 22.12 (Node 22 LTS or Node 24 LTS)
-- A [SolanaTracker.io](https://www.solanatracker.io/?ref=0NGJ5PPN) account
+- A [SolanaTracker.io](https://www.solanatracker.io/?ref=0NGJ5PPN) account (RPC + **Raptor API key**)
 - macOS (required for native Keychain security and system notifications; other operating systems are not supported)
+
+**v3:** Swaps use Solana Tracker's **Raptor** API and **Solana Kit** for signing (`solana-swap` / `@solana/web3.js` removed). Store a Raptor API key with `summon keychain store-api-key`.
 
 ---
 
@@ -27,21 +29,20 @@ First-time operator? Run `summon man` first for the built-in walkthrough.
 Have these inputs ready:
 
 - SolanaTracker RPC URL assigned to your account (full `https://...` endpoint; `advancedTx=true` can be present or omitted because summon enforces it automatically)
+- Raptor API key (sent as `x-api-key`; Keychain only)
 - Wallet private key in one accepted format: base58 string or JSON byte array string (example: `[12,34,...]`)
 
 During `summon setup`, you'll be asked for:
 
 - `rpcUrl`
-- `slippage` (`number` or `"auto"`)
-- `priorityFee` (`number` or `"auto"`)
-- `priorityFeeLevel` (`min|low|medium|high|veryHigh`)
+- `raptorBaseUrl` (default `https://raptor-beta.solanatracker.io`)
+- `slippage` (`number` or `"auto"` → Raptor dynamic)
+- `priorityFee` (`auto`, level name, or microlamports)
+- `priorityFeeLevel` (`min|low|medium|high|veryHigh|turbo|unsafeMax`)
 - `txVersion` (`v0` or `legacy`)
-- `showQuoteDetails` (`true`/`false`)
-- `DEBUG_MODE` (`true`/`false`)
-- `notificationsEnabled` (`true`/`false`)
-- `jito.enabled` (`true`/`false`)
-- `jito.tip` (SOL, only when Jito is enabled)
-- Whether to store/replace your private key now (`y/N`) and, if yes, paste the key
+- `showQuoteDetails` / `DEBUG_MODE` / `notificationsEnabled`
+- `tip.enabled` / `tip.sol` (optional SOL tips)
+- Wallet private key and Raptor API key storage in Keychain
 
 ---
 
@@ -206,6 +207,19 @@ npm run lint
 
 ---
 
+# 🛠️ Contributing / large changes
+
+For maintainers and coding agents:
+
+- **Agent rules:** [`AGENTS.md`](./AGENTS.md) (includes Solana Developer MCP usage)
+- **Architecture map:** [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)
+- **Roadmap (big updates):** [`docs/ROADMAP.md`](./docs/ROADMAP.md)
+- **Security / supply chain:** [`SECURITY.md`](./SECURITY.md)
+
+Prefer an isolated git worktree for multi-step refactors. After trade-path changes, run `summon doctor -v` and a small mainnet smoke test before tagging a release.
+
+---
+
 # 🩺 Diagnostics
 
 ```bash
@@ -222,14 +236,14 @@ This never would have been possible without Open Source Software and these contr
 
 Dependencies:
 
-- `@solana/web3.js` — [MIT](https://github.com/solana-foundation/solana-web3.js/blob/HEAD/LICENSE)
-- `axios` — [MIT](https://github.com/axios/axios/blob/HEAD/LICENSE)
+- `@solana/kit` — [MIT](https://github.com/anza-xyz/kit/blob/HEAD/LICENSE)
 - `bs58` — [MIT](https://github.com/cryptocoinjs/bs58/blob/HEAD/LICENSE)
 - `commander` — [MIT](https://github.com/tj/commander.js/blob/HEAD/LICENSE)
 - `fs-extra` — [MIT](https://github.com/jprichardson/node-fs-extra/blob/HEAD/LICENSE)
 - `keytar` — [MIT](https://github.com/atom/node-keytar/blob/HEAD/LICENSE)
 - `open` — [MIT](https://github.com/sindresorhus/open/blob/HEAD/LICENSE)
-- `solana-swap` — [ISC](https://github.com/YZYLAB/solana-swap/blob/HEAD/LICENSE)
+
+Swap backend: [Solana Tracker Raptor](https://docs.solanatracker.io/raptor/overview)
 
 Tooling:
 
