@@ -44,4 +44,21 @@ describe("RaptorClient", () => {
     const client = new RaptorClient({ apiKey: "k", fetchImpl });
     await expect(client.health()).rejects.toThrow(/unauthorized|Raptor error/i);
   });
+
+  test("preserves Raptor error code and response body", async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ error: "Insufficient funds", code: 123 }),
+    });
+    const client = new RaptorClient({ apiKey: "k", fetchImpl });
+
+    const error = await client.sendTransaction("signed").catch((value) => value);
+
+    expect(error.message).toMatch(/Insufficient funds/i);
+    expect(error.message).toMatch(/code 123/i);
+    expect(error).toMatchObject({
+      details: { status: 400, body: { error: "Insufficient funds", code: 123 } },
+    });
+  });
 });

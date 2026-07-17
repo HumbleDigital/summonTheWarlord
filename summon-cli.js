@@ -27,6 +27,7 @@ import { notify } from "./utils/notify.js";
 import { runDoctor } from "./lib/doctor.js";
 import { MINT_EXAMPLE, getAmountExamples, validateTradeInput } from "./lib/tradeInput.js";
 import { promptRaptorApiKey } from "./lib/raptorApiKeyPrompt.js";
+import { createDebugLog, redactDebugValue } from "./utils/debugLog.js";
 
 const program = new Command();
 program
@@ -77,7 +78,7 @@ const CONFIG_HELP = [
   { key: "tip.account", type: "string", note: "Optional tip account pubkey" },
   { key: "tip.lamports", type: "number | empty", note: "Tip amount in lamports (overrides tip.sol)" },
   { key: "showQuoteDetails", type: "true | false", note: "Print quote details after swaps" },
-  { key: "DEBUG_MODE", type: "true | false", note: "Enable verbose logs" },
+  { key: "DEBUG_MODE", type: "true | false", note: "Write redacted per-trade debug logs" },
   { key: "notificationsEnabled", type: "true | false", note: "Enable macOS notifications" },
   { key: "jito.enabled", type: "true | false", note: "Legacy; migrated into tip.enabled" },
   { key: "jito.tip", type: "number", note: "Legacy tip SOL; migrated into tip.sol" },
@@ -122,7 +123,7 @@ const WIZARD_FIELD_GUIDANCE = {
     defaultValue: DEFAULT_CONFIG.showQuoteDetails,
   },
   DEBUG_MODE: {
-    helper: "Verbose network logging. Useful for diagnostics, noisy for regular trading.",
+    helper: "Write a redacted per-trade log under ~/Library/Logs/summonTheWarlord and show its path when done.",
     recommended: DEFAULT_CONFIG.DEBUG_MODE,
     defaultValue: DEFAULT_CONFIG.DEBUG_MODE,
   },
@@ -633,6 +634,19 @@ async function executeTrade(type, mintArg, amountArg) {
   const validated = await resolveTradeInput(type, mintArg, amountArg);
   const mint = validated.mint;
   const amountParam = validated.amount;
+  let debugLog = null;
+  if (cfg.DEBUG_MODE) {
+    try {
+      debugLog = await createDebugLog({
+        enabled: true,
+        operation: `${type}-${mint.slice(0, 8)}`,
+        onError: (error) => console.warn(`⚠️ Debug log write failed: ${error.message}`),
+      });
+    } catch (error) {
+      console.warn(`⚠️ Unable to create debug log: ${error.message}`);
+    }
+  }
+  await debugLog?.write("trade.started", { action: type, mint, amount: amountParam });
 
   try {
     const mintDisplay = `${mint.slice(0, 4)}…${mint.slice(-4)}`;
@@ -656,12 +670,19 @@ async function executeTrade(type, mintArg, amountArg) {
 
     if (type === "buy") {
       if (amountParam === "auto") {
-        console.error("⚠️  Buying with 'auto' isn’t supported. Use a number or '<percent>%'.");
-        process.exit(1);
+        throw new Error("Buying with 'auto' isn’t supported. Use a number or '<percent>%'.");
       }
 
       const { buyToken } = await getTradeModule();
-      const result = await buyToken(mint, amountParam, { cfg });
+      const result = await buyToken(mint, amountParam, { cfg, debugLog });
+      await debugLog?.write("trade.succeeded", {
+        action: type,
+        mint,
+        amount: amountParam,
+        txid: result.txid,
+        verificationStatus: result.verificationStatus,
+      });
+      await debugLog?.close();
       clearScreen();
       const info = `Received ${result.tokensReceivedDecimal} tokens | Fees ${result.totalFees} | Impact ${result.priceImpact}`;
       const buyRows = [
@@ -670,6 +691,7 @@ async function executeTrade(type, mintArg, amountArg) {
         ["Explorer", `https://orbmarkets.io/tx/${result.txid}`],
         ["Info", info],
         ["Verification", result.verificationStatus],
+        ...(debugLog ? [["Debug log", debugLog.path]] : []),
       ];
       renderStatusBox({ title: "SUCCESS", rows: buyRows, tone: ANSI.green });
       if (cfg.showQuoteDetails) {
@@ -677,7 +699,15 @@ async function executeTrade(type, mintArg, amountArg) {
       }
     } else if (type === "sell") {
       const { sellToken } = await getTradeModule();
-      const result = await sellToken(mint, amountParam, { cfg });
+      const result = await sellToken(mint, amountParam, { cfg, debugLog });
+      await debugLog?.write("trade.succeeded", {
+        action: type,
+        mint,
+        amount: amountParam,
+        txid: result.txid,
+        verificationStatus: result.verificationStatus,
+      });
+      await debugLog?.close();
       clearScreen();
       const info = `Received ${result.solReceivedDecimal} SOL | Fees ${result.totalFees} | Impact ${result.priceImpact}`;
       const sellRows = [
@@ -686,6 +716,7 @@ async function executeTrade(type, mintArg, amountArg) {
         ["Explorer", `https://orbmarkets.io/tx/${result.txid}`],
         ["Info", info],
         ["Verification", result.verificationStatus],
+        ...(debugLog ? [["Debug log", debugLog.path]] : []),
       ];
       renderStatusBox({ title: "SUCCESS", rows: sellRows, tone: ANSI.green });
       if (cfg.showQuoteDetails) {
@@ -694,6 +725,13 @@ async function executeTrade(type, mintArg, amountArg) {
     }
     process.exit(0);
   } catch (err) {
+    await debugLog?.write("trade.failed", {
+      action: type,
+      mint,
+      amount: amountParam,
+      error: redactDebugValue(err),
+    });
+    await debugLog?.close();
     clearScreen();
     const errorMessage = err?.message || "Unknown error";
     const txidMatch = errorMessage.match(/[1-9A-HJ-NP-Za-km-z]{32,}/);
@@ -711,6 +749,7 @@ async function executeTrade(type, mintArg, amountArg) {
         ["TXID", txid],
         ["Explorer", explorer],
         ["Error", errorMessage],
+        ...(debugLog ? [["Debug log", debugLog.path]] : []),
       ],
     });
     process.exit(1);
@@ -1168,8 +1207,8 @@ NOTES:
   • Buying with "auto" is NOT supported — use a number or percent
   • Secrets (wallet + Raptor API key) live in macOS Keychain only
   • Notifications are optional. Toggle notificationsEnabled in config if you want silence.
-  • Swaps show Pending → Success/Failed panes. If Verification is pending, open:
-      https://orbmarkets.io/tx/<txid>
+  • Swaps show Pending → Success/Failed panes. An unconfirmed swap is not reported as success;
+      use its TXID and debug log to investigate before retrying.
   • Quote details can be toggled in config or during setup
   • Always confirm transactions via returned TXID and fees
 

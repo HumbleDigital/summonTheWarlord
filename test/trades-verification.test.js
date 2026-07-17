@@ -95,16 +95,16 @@ describe("trade verification behavior", () => {
     expect(client.raptor.sendTransaction).toHaveBeenCalled();
   });
 
-  test("keeps verification pending when status never confirms within timeout schedule", async () => {
+  test("does not report success when status never confirms within timeout schedule", async () => {
     jest.useFakeTimers();
     const client = makeClient(jest.fn().mockResolvedValue({ status: "pending" }));
     const { buyToken } = await loadBuyWithMocks({ client });
 
     const pendingResultPromise = buyToken(MINT, 0.2);
+    const rejection = expect(pendingResultPromise).rejects.toThrow(/not confirmed/i);
     await jest.runAllTimersAsync();
-    const result = await pendingResultPromise;
+    await rejection;
 
-    expect(result.verificationStatus).toBe("pending");
     expect(client.raptor.getTransactionStatus).toHaveBeenCalledTimes(7);
   });
 
@@ -112,5 +112,42 @@ describe("trade verification behavior", () => {
     const client = makeClient(jest.fn().mockResolvedValue({ status: "failed", error: "boom" }));
     const { buyToken } = await loadBuyWithMocks({ client });
     await expect(buyToken(MINT, 0.2)).rejects.toThrow(/Swap failed/i);
+  });
+
+  test("decodes Raptor instruction errors from transaction status", async () => {
+    const client = makeClient(jest.fn().mockResolvedValue({
+      status: "failed",
+      error: "[8, 0, 0, 0, 2, 25, 0, 0, 0, 114, 23, 0, 0]",
+    }));
+    const { buyToken } = await loadBuyWithMocks({ client });
+
+    await expect(buyToken(MINT, 0.2)).rejects.toThrow(/Insufficient funds for transaction.*6002/i);
+  });
+
+  test("does not fall back to the local signature when Raptor rejects the send", async () => {
+    const client = makeClient(jest.fn().mockResolvedValue({ status: "confirmed" }));
+    client.raptor.sendTransaction.mockResolvedValue({ success: false, error: "insufficient funds" });
+    const { buyToken } = await loadBuyWithMocks({ client });
+
+    await expect(buyToken(MINT, 0.2)).rejects.toThrow(/insufficient funds/i);
+    expect(client.raptor.getTransactionStatus).not.toHaveBeenCalled();
+  });
+
+  test("requires Raptor to explicitly accept the send response", async () => {
+    const client = makeClient(jest.fn().mockResolvedValue({ status: "confirmed" }));
+    client.raptor.sendTransaction.mockResolvedValue({ signature: "tx-123" });
+    const { buyToken } = await loadBuyWithMocks({ client });
+
+    await expect(buyToken(MINT, 0.2)).rejects.toThrow(/accept|success/i);
+    expect(client.raptor.getTransactionStatus).not.toHaveBeenCalled();
+  });
+
+  test("rejects a Raptor signature that does not match the signed payload", async () => {
+    const client = makeClient(jest.fn().mockResolvedValue({ status: "confirmed" }));
+    client.raptor.sendTransaction.mockResolvedValue({ signature: "different-signature", success: true });
+    const { buyToken } = await loadBuyWithMocks({ client });
+
+    await expect(buyToken(MINT, 0.2)).rejects.toThrow(/different signature/i);
+    expect(client.raptor.getTransactionStatus).not.toHaveBeenCalled();
   });
 });
