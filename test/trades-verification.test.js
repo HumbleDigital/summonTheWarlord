@@ -15,14 +15,22 @@ const BASE_CFG = {
 const MINT = "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN";
 const WSOL = "So11111111111111111111111111111111111111112";
 
-function makeClient(getTransactionStatus) {
+function makeClient(getTransactionStatus, onChainStatus = {
+  confirmationStatus: "confirmed",
+  err: null,
+  slot: 1,
+}) {
   return {
     publicKey: "wallet11111111111111111111111111111111111111",
     signer: {
       address: "wallet11111111111111111111111111111111111111",
       keyPair: {},
     },
-    rpc: {},
+    rpc: {
+      getSignatureStatuses: jest.fn().mockReturnValue({
+        send: jest.fn().mockResolvedValue({ value: [onChainStatus] }),
+      }),
+    },
     raptor: {
       getQuote: jest.fn().mockResolvedValue({
         amountOut: "12500000",
@@ -97,21 +105,31 @@ describe("trade verification behavior", () => {
 
   test("does not report success when status never confirms within timeout schedule", async () => {
     jest.useFakeTimers();
-    const client = makeClient(jest.fn().mockResolvedValue({ status: "pending" }));
+    const client = makeClient(jest.fn().mockResolvedValue({ status: "pending" }), null);
     const { buyToken } = await loadBuyWithMocks({ client });
 
     const pendingResultPromise = buyToken(MINT, 0.2);
-    const rejection = expect(pendingResultPromise).rejects.toThrow(/not confirmed/i);
+    const rejection = expect(pendingResultPromise).rejects.toThrow(/on-chain/i);
     await jest.runAllTimersAsync();
     await rejection;
 
-    expect(client.raptor.getTransactionStatus).toHaveBeenCalledTimes(7);
+    expect(client.raptor.getTransactionStatus).toHaveBeenCalledTimes(16);
   });
 
   test("throws when transaction status is failed", async () => {
     const client = makeClient(jest.fn().mockResolvedValue({ status: "failed", error: "boom" }));
     const { buyToken } = await loadBuyWithMocks({ client });
     await expect(buyToken(MINT, 0.2)).rejects.toThrow(/Swap failed/i);
+  });
+
+  test("reports an on-chain transaction error after Raptor accepts it", async () => {
+    const client = makeClient(
+      jest.fn().mockResolvedValue({ status: "pending" }),
+      { confirmationStatus: "confirmed", err: { InstructionError: [2, { Custom: 6002 }] }, slot: 42 }
+    );
+    const { buyToken } = await loadBuyWithMocks({ client });
+
+    await expect(buyToken(MINT, 0.2)).rejects.toThrow(/Solana rejected transaction/i);
   });
 
   test("decodes Raptor instruction errors from transaction status", async () => {
