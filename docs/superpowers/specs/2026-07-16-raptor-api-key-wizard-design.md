@@ -6,9 +6,9 @@ The config wizard currently asks a yes/no question before requesting a missing R
 
 ## Design
 
-The wizard will make the API-key step explicit and stateful:
+The wizard will make the API-key step direct and unambiguous:
 
-- If a Raptor API key is already stored, ask whether to replace it. A blank response, `n`, or `no` keeps the existing key and continues.
+- If a Raptor API key is already stored, let the user press Enter to keep it or paste a replacement. There is no yes/no gate.
 - If no key is stored, prompt directly for the key. The prompt will explain that the key is required for swaps and that blank, `n`, or `no` exits without saving it.
 - A non-empty key is sent through the existing Keychain storage helper. The raw key is never logged, displayed, or written to config.
 - A blank, `n`, or `no` response when no key exists returns a controlled incomplete result. The wizard closes its readline interface, prints that no key was saved and swaps remain unavailable, skips `saveConfig()`, and exits with a non-success status without a stack trace.
@@ -20,7 +20,13 @@ The shared wizard runner will return a completion result rather than making call
 
 Use direct wording such as:
 
+Missing key:
+
 `Paste your Raptor API key (required for swaps; press Enter, or type n/no, to exit):`
+
+Existing key:
+
+`Raptor API key already stored. Press Enter to keep it, or paste a replacement:`
 
 The surrounding heading will say that the key is stored in macOS Keychain and sent as the `x-api-key` request header, not written to `config.json`.
 
@@ -30,8 +36,8 @@ Add focused tests for the decision behavior:
 
 - missing key plus a non-empty input stores the key and completes the step;
 - missing key plus blank, `n`, or `no` returns an incomplete result without storing;
-- existing key plus blank, `n`, or `no` keeps the key and completes;
-- existing key plus `y` stores the replacement;
+- existing key plus blank keeps the key and completes;
+- existing key plus a pasted replacement stores the replacement;
 - storage errors return an incomplete result and do not claim completion.
 
 Keep the existing Keychain implementation and secret masking path; the change is limited to prompt semantics, completion propagation, and user-facing text.

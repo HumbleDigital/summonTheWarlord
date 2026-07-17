@@ -26,6 +26,7 @@ import readline from "readline";
 import { notify } from "./utils/notify.js";
 import { runDoctor } from "./lib/doctor.js";
 import { MINT_EXAMPLE, getAmountExamples, validateTradeInput } from "./lib/tradeInput.js";
+import { promptRaptorApiKey } from "./lib/raptorApiKeyPrompt.js";
 
 const program = new Command();
 program
@@ -175,33 +176,25 @@ function printKeychainAccessHint() {
  * @param {import('readline').Interface} rl
  */
 async function promptRaptorApiKeyKeychain(rl) {
-  try {
-    if (await hasRaptorApiKey()) {
-      const updateKey = await askQuestion(
-        rl,
-        "🔑 Raptor API key already stored. Replace it? (y/N): "
-      );
-      if (updateKey.toLowerCase() === "y") {
-        const apiKey = await askSecretQuestion(rl, "Paste your Raptor API key: ");
-        await storeRaptorApiKey(apiKey);
-      } else {
-        console.log("✅ Keeping existing Raptor API key.");
-      }
-    } else {
-      const storeKey = await askQuestion(
-        rl,
-        "Store Raptor API key now? Required for swaps. (Y/n): "
-      );
-      if (storeKey.toLowerCase() !== "n") {
-        const apiKey = await askSecretQuestion(rl, "Paste your Raptor API key: ");
-        await storeRaptorApiKey(apiKey);
-      } else {
-        console.log("⚠️ No Raptor API key stored. Add one with `summon keychain store-api-key`.");
-      }
-    }
-  } catch (e) {
-    console.error("❌ Raptor API key Keychain error:", e.message);
+  const result = await promptRaptorApiKey({
+    hasRaptorApiKey,
+    askSecretQuestion: (prompt) => askSecretQuestion(rl, prompt),
+    storeRaptorApiKey,
+  });
+
+  if (result.error) {
+    console.error("❌ Raptor API key Keychain error:", result.error.message);
+  } else if (!result.completed) {
+    console.error(
+      "⚠️ No Raptor API key was saved. Swaps are unavailable until you add one with `summon keychain store-api-key`."
+    );
+  } else if (result.kept) {
+    console.log("✅ Keeping the existing Raptor API key.");
+  } else {
+    console.log("✅ Raptor API key saved securely in macOS Keychain.");
   }
+
+  return result.completed;
 }
 
 const COLOR_ENABLED = process.stdout.isTTY;
@@ -550,7 +543,10 @@ async function runConfigWizard({ cfg, rl }) {
   renderWizardHeader();
   console.log("Raptor API key (Keychain — not written to config.json)");
   console.log("Sent as x-api-key on every Raptor request.\n");
-  await promptRaptorApiKeyKeychain(rl);
+  const raptorApiKeyReady = await promptRaptorApiKeyKeychain(rl);
+  if (!raptorApiKeyReady) {
+    return null;
+  }
 
   return nextCfg;
 }
@@ -805,6 +801,11 @@ configCmd
     });
     const cfg = await loadConfig();
     const updated = await runConfigWizard({ cfg, rl });
+    if (!updated) {
+      rl.close();
+      process.exitCode = 1;
+      return;
+    }
     await saveConfig(updated);
     rl.close();
     const configPath = getConfigPath();
@@ -827,6 +828,11 @@ program
 
     console.log("⚙️  Summon CLI Setup\n");
     const updated = await runConfigWizard({ cfg, rl });
+    if (!updated) {
+      rl.close();
+      process.exitCode = 1;
+      return;
+    }
     await saveConfig(updated);
     console.log(`✅ Config saved to ${configPath}`);
 
