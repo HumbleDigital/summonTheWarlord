@@ -380,6 +380,9 @@ async function promptSelect(rl, label, options, { current, required = false } = 
     const suffix = current ? ` [${current}]` : "";
     const answer = await askQuestion(rl, `Select${suffix}: `);
     if (!answer) {
+      if (current !== undefined) {
+        return current;
+      }
       if (required) {
         console.log("⚠️  Selection required.");
         continue;
