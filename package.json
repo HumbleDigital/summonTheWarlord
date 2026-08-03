@@ -58,7 +58,6 @@
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
-    "axios": "^1.19.0",
     "bs58": "^6.0.0",
     "commander": "^15.0.0",
     "fs-extra": "^11.4.0",
