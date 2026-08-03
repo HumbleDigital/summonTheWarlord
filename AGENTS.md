@@ -22,6 +22,9 @@
 - Never commit wallet secrets or API keys. Use the `summon keychain` commands to inspect or update stored keys.
 - Default config (`lib/config.js`) seeds a public RPC. The swap discount code is hardcoded and must remain hidden from users.
 - `priorityFee` may be `"auto"` or numeric. Percent-based amounts are strings ending with `%`, while `"auto"` consumes the full balance for sells.
+- `executionMode` is `basic` or `fast` (default `fast`). `basic` enables RPC preflight (`skipPreflight: false`); `fast` skips preflight for lower latency. See `lib/executionMode.js` and SECURITY.md.
+- Swap/SDK debug logging is controlled only by `DEBUG_MODE` (not `NODE_ENV`).
+- `walletSecretKey` must not reappear in config: load/normalize strips deprecated secret keys; do not reintroduce disk storage of private keys.
 
 ## Execution & Testing
 - Run the CLI via `node summon-cli.js ...` or the `summon` bin. Buying with `"auto"` is disallowed; selling supports `"auto"` and percentage strings.
@@ -45,5 +48,7 @@
 
 ## Review Checklist (Codex)
 - No changes that bypass Keychain storage or expose secrets in logs.
+- `walletSecretKey` (and other deprecated secret keys) must not reappear in config on disk.
 - RPC URLs still include `advancedTx=true`, and swap fee changes update both buy/sell paths.
+- `executionMode` remains `basic`|`fast`; debug remains `DEBUG_MODE`-only.
 - If `solana-swap` or RPC behavior changes, note manual verification steps.

@@ -99,9 +99,11 @@ test("normalizeConfig removes deprecated keys and records warnings", () => {
     DEBUG_MODE: "false",
     jito: { enabled: "true", tip: "0.002" },
     swapAPIKey: "secret",
+    walletSecretKey: "legacy-secret",
   });
 
   expect(config.swapAPIKey).toBeUndefined();
+  expect(config.walletSecretKey).toBeUndefined();
   expect(config.slippage).toBe(DEFAULT_CONFIG.slippage);
   expect(config.priorityFee).toBe(DEFAULT_CONFIG.priorityFee);
   expect(config.priorityFeeLevel).toBe("high");
@@ -110,8 +112,42 @@ test("normalizeConfig removes deprecated keys and records warnings", () => {
   expect(config.notificationsEnabled).toBe(false);
   expect(config.DEBUG_MODE).toBe(false);
   expect(config.jito).toEqual({ enabled: true, tip: 0.002 });
+  expect(config.executionMode).toBe("fast");
   expect(changed).toBe(true);
   expect(warnings.length).toBeGreaterThanOrEqual(2);
+});
+
+test("normalizeConfig strips walletSecretKey and swapAPIKey", () => {
+  const { config, changed } = normalizeConfig({
+    rpcUrl: "https://example",
+    swapAPIKey: "api-secret",
+    walletSecretKey: "wallet-secret",
+  });
+
+  expect(config.swapAPIKey).toBeUndefined();
+  expect(config.walletSecretKey).toBeUndefined();
+  expect(changed).toBe(true);
+});
+
+test("loadConfig migrates walletSecretKey off disk and defaults executionMode to fast", async () => {
+  const configPath = getConfigPath();
+  await fs.ensureDir(path.dirname(configPath));
+  await fs.writeJson(configPath, {
+    rpcUrl: "https://example",
+    walletSecretKey: "legacy-on-disk-secret",
+    swapAPIKey: "legacy-api-key",
+  });
+
+  const cfg = await loadConfig();
+
+  expect(cfg.walletSecretKey).toBeUndefined();
+  expect(cfg.swapAPIKey).toBeUndefined();
+  expect(cfg.executionMode).toBe("fast");
+
+  const stored = await fs.readJson(configPath);
+  expect(stored.walletSecretKey).toBeUndefined();
+  expect(stored.swapAPIKey).toBeUndefined();
+  expect(stored.executionMode).toBe("fast");
 });
 
 test("normalizeConfig warns on invalid jito settings", () => {

@@ -36,6 +36,7 @@ During `summon setup`, you'll be asked for:
 - `priorityFee` (`number` or `"auto"`)
 - `priorityFeeLevel` (`min|low|medium|high|veryHigh`)
 - `txVersion` (`v0` or `legacy`)
+- `executionMode` (`basic` or `fast`) — `basic` enables RPC preflight; `fast` skips preflight for lower latency (default)
 - `showQuoteDetails` (`true`/`false`)
 - `DEBUG_MODE` (`true`/`false`)
 - `notificationsEnabled` (`true`/`false`)
@@ -70,8 +71,8 @@ If this is your first time, run `summon man` before setup for the full command w
 
 This:
 
-- Creates/updates your config (RPC URL, slippage, priority fees, etc.)
-- Stores your private key securely in macOS Keychain
+- Creates/updates your config (RPC URL, slippage, priority fees, execution mode, etc.)
+- Stores your private key in the macOS Keychain (loaded into process memory only for local signing)
 - Prompts macOS notification permissions (optional)
 
 ---
@@ -174,8 +175,9 @@ Key options:
 - `priorityFee` (number or `"auto"`)
 - `priorityFeeLevel` (`min|low|medium|high|veryHigh`) — required when `priorityFee="auto"`
 - `txVersion` (`v0` or `legacy`)
+- `executionMode` (`basic` or `fast`) — `basic` runs RPC preflight (safer); `fast` skips preflight (default, lower latency)
 - `showQuoteDetails` (`true`/`false`)
-- `DEBUG_MODE` (`true`/`false`)
+- `DEBUG_MODE` (`true`/`false`) — verbose SDK/network logs (independent of `NODE_ENV`)
 - `notificationsEnabled` (`true`/`false`)
 - `jito.enabled` (`true`/`false`)
 - `jito.tip` (number, SOL)
@@ -187,13 +189,21 @@ Override config location (useful for CI or tests):
 - `SUMMON_CONFIG_HOME=/custom/config/dir`
 - `SUMMON_CONFIG_PATH=/custom/path/config.json`
 
-Private keys are never stored in this file. Use:
+Private keys are not stored in this file; they rest in the macOS Keychain and are loaded into process memory for local signing. Use:
 
 ```bash
 summon keychain store
 summon keychain unlock
 summon keychain delete
 ```
+
+---
+
+# 🔐 Security
+
+Private keys rest in the macOS Keychain and are loaded into process memory only for local signing. Prefer `executionMode=basic` when you want RPC preflight; `fast` skips preflight for lower latency.
+
+Full threat model, operator recommendations, legacy config notes, and vulnerability reporting: see **[SECURITY.md](./SECURITY.md)**.
 
 ---
 
