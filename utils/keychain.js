@@ -1,34 +1,31 @@
 import keytar from "keytar";
 import { KeychainError } from "../lib/errors.js";
+import {
+  normalizePrivateKeyInput,
+  validatePrivateKeyInput,
+} from "../lib/privateKey.js";
 import { logger } from "./logger.js";
 
 const SERVICE = "summonTheWarlord";
 const ACCOUNT = "wallet-private-key";
 
 /**
- * Normalize a pasted secret by coercing to string and trimming whitespace/newlines.
- * @param {any} secret
- * @returns {string}
- */
-function normalizeSecret(secret) {
-  return String(secret ?? "").trim();
-}
-
-/**
  * Stores the Solana private key in the macOS Keychain.
- * Accepts Base58 or a JSON array string; we store it as-is.
+ * Accepts Base58 or a JSON array string; validates before write and stores normalized form.
  * @param {string} secret - The private key string.
  */
 export async function storePrivateKey(secret) {
-  const normalized = normalizeSecret(secret);
-  if (!normalized) {
-    throw new KeychainError("No private key provided. Paste your Base58 string or JSON array.");
+  const normalized = normalizePrivateKeyInput(secret);
+  const validation = validatePrivateKeyInput(normalized);
+  if (!validation.ok) {
+    throw new KeychainError(validation.error);
   }
   try {
     await keytar.setPassword(SERVICE, ACCOUNT, normalized);
     console.log("🔐 Private key securely stored in macOS Keychain.");
   } catch (err) {
-    logger.error("Failed to store private key.", { error: err?.message });
+    // Do not log err.message — keytar or other layers may embed the secret.
+    logger.error("Failed to store private key.");
     throw new KeychainError("Failed to store private key in Keychain.", { cause: err });
   }
 }
