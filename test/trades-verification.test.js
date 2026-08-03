@@ -7,6 +7,7 @@ const BASE_CFG = {
   txVersion: "v0",
   DEBUG_MODE: false,
   notificationsEnabled: false,
+  executionMode: "fast",
   jito: { enabled: false, tip: 0.0001 },
 };
 
