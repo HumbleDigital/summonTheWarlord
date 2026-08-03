@@ -44,6 +44,7 @@ test("loadConfig writes defaults when missing", async () => {
   expect(cfg.rpcUrl).toBe("https://rpc.solanatracker.io/public?advancedTx=true");
   expect(cfg.priorityFee).toBe("auto");
   expect(cfg.priorityFeeLevel).toBe("medium");
+  expect(cfg.executionMode).toBe("fast");
   expect(cfg.jito).toEqual({ enabled: false, tip: 0.0001 });
   expect(cfg.notificationsEnabled).toBe(true);
 
@@ -93,6 +94,7 @@ test("saveConfig persists updates with secure permissions", async () => {
     showQuoteDetails: true,
     DEBUG_MODE: true,
     notificationsEnabled: false,
+    executionMode: "fast",
     jito: { enabled: true, tip: 0.0002 },
   };
 

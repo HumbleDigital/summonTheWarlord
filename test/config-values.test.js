@@ -37,3 +37,18 @@ test("normalizeConfigValue validates jito config", () => {
   });
   expect(() => normalizeConfigValue("jito", { enabled: "maybe" }, { strict: true })).toThrow();
 });
+
+test("normalizeConfigValue accepts executionMode basic and fast", () => {
+  expect(normalizeConfigValue("executionMode", "basic", { strict: true })).toBe("basic");
+  expect(normalizeConfigValue("executionMode", "fast", { strict: true })).toBe("fast");
+});
+
+test("normalizeConfigValue normalizes executionMode case-insensitively", () => {
+  expect(normalizeConfigValue("executionMode", "FAST", { strict: true })).toBe("fast");
+  expect(normalizeConfigValue("executionMode", "Basic", { strict: true })).toBe("basic");
+});
+
+test("normalizeConfigValue rejects invalid executionMode", () => {
+  expect(() => normalizeConfigValue("executionMode", "turbo", { strict: true })).toThrow(/basic|fast/i);
+  expect(() => normalizeConfigValue("executionMode", 123, { strict: true })).toThrow();
+});
