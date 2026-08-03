@@ -19,6 +19,7 @@ import { notify } from "./utils/notify.js";
 import { runDoctor } from "./lib/doctor.js";
 import { MINT_EXAMPLE, getAmountExamples, validateTradeInput } from "./lib/tradeInput.js";
 import { assertInteractiveSecretEntry } from "./lib/secretInput.js";
+import { redactSensitiveUrl } from "./lib/redact.js";
 
 const program = new Command();
 program
@@ -151,46 +152,6 @@ const ANSI = {
 };
 
 const paint = (text, color) => (COLOR_ENABLED ? `${color}${text}${ANSI.reset}` : text);
-const SENSITIVE_URL_KEY_PATTERN = /key|token|secret|auth|signature|sig|password|pwd/i;
-
-function maskSensitiveValue(value) {
-  const text = String(value ?? "");
-  if (!text) {
-    return text;
-  }
-  if (text.length <= 4) {
-    return "*".repeat(text.length);
-  }
-  return `${"*".repeat(text.length - 4)}${text.slice(-4)}`;
-}
-
-function redactSensitiveUrl(rawUrl) {
-  const urlText = String(rawUrl ?? "").trim();
-  if (!urlText) {
-    return urlText;
-  }
-
-  try {
-    const parsed = new URL(urlText);
-    if (parsed.username) {
-      parsed.username = maskSensitiveValue(parsed.username);
-    }
-    if (parsed.password) {
-      parsed.password = maskSensitiveValue(parsed.password);
-    }
-    for (const [key, value] of parsed.searchParams.entries()) {
-      if (SENSITIVE_URL_KEY_PATTERN.test(key)) {
-        parsed.searchParams.set(key, maskSensitiveValue(value));
-      }
-    }
-    return parsed.toString();
-  } catch {
-    return urlText.replace(
-      /([?&][^=]*(?:key|token|secret|auth|signature|sig|password|pwd)[^=]*=)([^&]+)/ig,
-      (_, prefix, value) => `${prefix}${maskSensitiveValue(value)}`
-    );
-  }
-}
 
 function formatConfigDisplayValue(key, value) {
   if (key === "rpcUrl") {
