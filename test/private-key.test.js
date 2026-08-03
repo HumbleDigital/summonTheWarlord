@@ -143,6 +143,35 @@ describe("wipeBytes", () => {
   });
 });
 
+describe("Keypair.fromSecretKey buffer ownership", () => {
+  test("shares buffer with input — wipeBytes would break signing", () => {
+    const original = Keypair.generate();
+    const secret = Uint8Array.from(original.secretKey);
+    const kp = Keypair.fromSecretKey(secret);
+
+    // Document web3.js behavior: same underlying buffer reference.
+    expect(kp.secretKey === secret || Buffer.from(kp.secretKey).equals(Buffer.from(secret))).toBe(
+      true
+    );
+    expect(Buffer.from(kp.secretKey).equals(Buffer.from(original.secretKey))).toBe(true);
+
+    // Wiping the input zeros the live Keypair secret (the bug we must not reintroduce).
+    wipeBytes(secret);
+    expect(kp.secretKey.every((b) => b === 0)).toBe(true);
+  });
+
+  test("parse + fromSecretKey leaves secret non-zero and matches input (no wipe)", () => {
+    const original = Keypair.generate();
+    const encoded = bs58.encode(original.secretKey);
+    const secretBytes = parsePrivateKeyToSecretKey(encoded);
+    const kp = Keypair.fromSecretKey(secretBytes);
+
+    expect(kp.secretKey.every((b) => b === 0)).toBe(false);
+    expect(Buffer.from(kp.secretKey).equals(Buffer.from(original.secretKey))).toBe(true);
+    expect(kp.publicKey.equals(original.publicKey)).toBe(true);
+  });
+});
+
 describe("normalizePrivateKeyInput", () => {
   test("trims whitespace only", () => {
     expect(normalizePrivateKeyInput("  abc  ")).toBe("abc");

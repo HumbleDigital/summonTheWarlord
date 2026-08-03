@@ -832,29 +832,16 @@ program
   .description("Open your wallet in the browser via SolanaTracker.io")
   .action(async () => {
     // Lazy-load heavier deps only when wallet command runs
-    const [{ Keypair }, { default: bs58 }, { default: open }] = await Promise.all([
+    const [{ Keypair }, { parsePrivateKeyToSecretKey }, { default: open }] = await Promise.all([
       import("@solana/web3.js"),
-      import("bs58"),
+      import("./lib/privateKey.js"),
       import("open"),
     ]);
     try {
       const rawKey = await getPrivateKey();
-      let keypair;
-
-      try {
-        // Try base58 format
-        const bytes = bs58.decode(rawKey);
-        keypair = Keypair.fromSecretKey(bytes);
-      } catch {
-        try {
-          // Try JSON array format
-          const arr = JSON.parse(rawKey);
-          if (!Array.isArray(arr)) throw new Error("Not an array");
-          keypair = Keypair.fromSecretKey(Uint8Array.from(arr));
-        } catch {
-          throw new Error("Private key is neither base58 nor valid JSON array.");
-        }
-      }
+      // Shared parser (Base58 or JSON 32/64-byte); do not wipe — Keypair keeps the buffer.
+      const secretBytes = parsePrivateKeyToSecretKey(rawKey);
+      const keypair = Keypair.fromSecretKey(secretBytes);
 
       const pubkey = keypair.publicKey.toBase58();
       const url = `https://www.solanatracker.io/wallet/${pubkey}`;
