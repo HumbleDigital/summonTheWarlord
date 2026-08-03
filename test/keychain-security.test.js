@@ -57,7 +57,16 @@ describe("storePrivateKey security", () => {
     }));
 
     const { storePrivateKey } = await import("../utils/keychain.js");
-    await expect(storePrivateKey(secret)).rejects.toThrow();
+    let thrown;
+    try {
+      await storePrivateKey(secret);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeDefined();
+    expect(thrown.message).not.toContain(secret);
+    // No cause: keytar's error message can embed the password.
+    expect(thrown.cause).toBeUndefined();
     const logged = JSON.stringify(loggerError.mock.calls);
     expect(logged).not.toContain(secret);
   });
