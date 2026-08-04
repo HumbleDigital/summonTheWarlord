@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 export const EXPECTED_PACKAGE_FILES = [
   "LICENSE",
   "README.md",
+  "SECURITY.md",
   "lib/config.js",
   "lib/doctor.js",
   "lib/errors.js",

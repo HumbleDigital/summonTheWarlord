@@ -29,8 +29,12 @@ npm install -g @vault77/summon@latest
 - Keys therefore **do** exist in JavaScript/process memory while the CLI is
   running a swap session. They are not claimed to be hardware-enclave-only or
   zero-knowledge to the local process.
+- Temporary parse buffers used only for validation may be zeroed; the live
+  `Keypair` secret buffer is retained for signing (wiping it would break trades).
 - Signing happens locally with that keypair. The private key is not intended
   to leave the machine via the swap HTTP API.
+- Private key paste requires an interactive terminal; non-TTY pipe/paste is
+  refused so secrets are not echoed into logs.
 
 ### Same-user malware / local compromise
 
@@ -99,6 +103,9 @@ preflight. Only `DEBUG_MODE` (not `NODE_ENV`) enables swap debug logging.
   include full RPC URLs with API keys.
 - Verify token mints and amounts before every live swap.
 - Rotate RPC credentials if a URL may have leaked.
+- Run `summon keychain store` only in an interactive terminal; the CLI validates
+  key format before writing to Keychain and never prints the key on
+  `summon keychain unlock`.
 
 ## Legacy Config
 
