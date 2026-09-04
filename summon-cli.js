@@ -11,12 +11,16 @@ import {
   normalizeConfigValue,
   PRIORITY_FEE_LEVELS,
   TX_VERSIONS,
+  EXECUTION_MODES,
 } from "./lib/config.js";
 import { storePrivateKey, getPrivateKey, deletePrivateKey, hasPrivateKey } from "./utils/keychain.js";
 import readline from "readline";
 import { notify } from "./utils/notify.js";
 import { runDoctor } from "./lib/doctor.js";
 import { MINT_EXAMPLE, getAmountExamples, validateTradeInput } from "./lib/tradeInput.js";
+import { buildTradeStatusView } from "./lib/tradeStatus.js";
+import { assertInteractiveSecretEntry } from "./lib/secretInput.js";
+import { redactSensitiveUrl } from "./lib/redact.js";
 
 const program = new Command();
 program
@@ -39,6 +43,11 @@ const CONFIG_HELP = [
     note: "Required when priorityFee=auto",
   },
   { key: "txVersion", type: TX_VERSIONS.join(" | "), note: "Transaction version" },
+  {
+    key: "executionMode",
+    type: EXECUTION_MODES.join(" | "),
+    note: "basic enables RPC preflight; fast skips preflight (default)",
+  },
   { key: "showQuoteDetails", type: "true | false", note: "Print quote details after swaps" },
   { key: "DEBUG_MODE", type: "true | false", note: "Enable verbose SDK logs" },
   { key: "notificationsEnabled", type: "true | false", note: "Enable macOS notifications" },
@@ -72,6 +81,12 @@ const WIZARD_FIELD_GUIDANCE = {
     recommended: DEFAULT_CONFIG.txVersion,
     defaultValue: DEFAULT_CONFIG.txVersion,
   },
+  executionMode: {
+    helper:
+      "basic runs RPC preflight (safer, slower). fast skips preflight (current low-latency path). Either way trusts SolanaTracker-built transactions.",
+    recommended: DEFAULT_CONFIG.executionMode,
+    defaultValue: DEFAULT_CONFIG.executionMode,
+  },
   showQuoteDetails: {
     helper: "Print full quote payload after swaps. Enable only when debugging swap math.",
     recommended: DEFAULT_CONFIG.showQuoteDetails,
@@ -103,9 +118,10 @@ const askQuestion = (rl, prompt) =>
   new Promise((resolve) => rl.question(prompt, (answer) => resolve(answer.trim())));
 
 async function askSecretQuestion(rl, prompt) {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    return askQuestion(rl, prompt);
-  }
+  assertInteractiveSecretEntry({
+    stdinIsTTY: process.stdin.isTTY,
+    stdoutIsTTY: process.stdout.isTTY,
+  });
 
   const originalWrite = rl._writeToOutput?.bind(rl);
   rl.output.write(prompt);
@@ -137,46 +153,6 @@ const ANSI = {
 };
 
 const paint = (text, color) => (COLOR_ENABLED ? `${color}${text}${ANSI.reset}` : text);
-const SENSITIVE_URL_KEY_PATTERN = /key|token|secret|auth|signature|sig|password|pwd/i;
-
-function maskSensitiveValue(value) {
-  const text = String(value ?? "");
-  if (!text) {
-    return text;
-  }
-  if (text.length <= 4) {
-    return "*".repeat(text.length);
-  }
-  return `${"*".repeat(text.length - 4)}${text.slice(-4)}`;
-}
-
-function redactSensitiveUrl(rawUrl) {
-  const urlText = String(rawUrl ?? "").trim();
-  if (!urlText) {
-    return urlText;
-  }
-
-  try {
-    const parsed = new URL(urlText);
-    if (parsed.username) {
-      parsed.username = maskSensitiveValue(parsed.username);
-    }
-    if (parsed.password) {
-      parsed.password = maskSensitiveValue(parsed.password);
-    }
-    for (const [key, value] of parsed.searchParams.entries()) {
-      if (SENSITIVE_URL_KEY_PATTERN.test(key)) {
-        parsed.searchParams.set(key, maskSensitiveValue(value));
-      }
-    }
-    return parsed.toString();
-  } catch {
-    return urlText.replace(
-      /([?&][^=]*(?:key|token|secret|auth|signature|sig|password|pwd)[^=]*=)([^&]+)/ig,
-      (_, prefix, value) => `${prefix}${maskSensitiveValue(value)}`
-    );
-  }
-}
 
 function formatConfigDisplayValue(key, value) {
   if (key === "rpcUrl") {
@@ -287,6 +263,7 @@ function renderConfigSummary(cfg, configPath, title = "CONFIG") {
     ["Priority fee", cfg.priorityFee],
     ["Priority level", cfg.priorityFeeLevel],
     ["Tx version", cfg.txVersion],
+    ["Execution mode", cfg.executionMode],
     ["Show quote", cfg.showQuoteDetails],
     ["Debug mode", cfg.DEBUG_MODE],
     ["Notifications", cfg.notificationsEnabled],
@@ -399,6 +376,14 @@ async function runConfigWizard({ cfg, rl }) {
   renderWizardFieldGuidance("txVersion");
   nextCfg.txVersion = await promptSelect(rl, "Transaction version", TX_VERSIONS, {
     current: nextCfg.txVersion,
+  });
+
+  clearScreen();
+  renderWizardHeader();
+  renderWizardFieldGuidance("executionMode");
+  nextCfg.executionMode = await promptSelect(rl, "Execution mode", EXECUTION_MODES, {
+    current: nextCfg.executionMode ?? DEFAULT_CONFIG.executionMode,
+    required: true,
   });
 
   clearScreen();
@@ -546,6 +531,7 @@ async function executeTrade(type, mintArg, amountArg) {
       ],
     });
 
+    let result;
     if (type === "buy") {
       if (amountParam === "auto") {
         console.error("⚠️  Buying with 'auto' isn’t supported. Use a number or '<percent>%'.");
@@ -553,59 +539,42 @@ async function executeTrade(type, mintArg, amountArg) {
       }
 
       const { buyToken } = await getTradeModule();
-      const result = await buyToken(mint, amountParam, { cfg });
-      clearScreen();
-      const info = `Received ${result.tokensReceivedDecimal} tokens | Fees ${result.totalFees} | Impact ${result.priceImpact}`;
-      const buyRows = [
-        ...baseRows,
-        ["TXID", result.txid],
-        ["Explorer", `https://orbmarkets.io/tx/${result.txid}`],
-        ["Info", info],
-        ["Verification", result.verificationStatus],
-      ];
-      renderStatusBox({ title: "SUCCESS", rows: buyRows, tone: ANSI.green });
-      if (cfg.showQuoteDetails) {
-        console.log(`   • Quote Details     : ${JSON.stringify(result.quote, null, 2)}`);
-      }
+      result = await buyToken(mint, amountParam, { cfg });
     } else if (type === "sell") {
       const { sellToken } = await getTradeModule();
-      const result = await sellToken(mint, amountParam, { cfg });
-      clearScreen();
-      const info = `Received ${result.solReceivedDecimal} SOL | Fees ${result.totalFees} | Impact ${result.priceImpact}`;
-      const sellRows = [
-        ...baseRows,
-        ["TXID", result.txid],
-        ["Explorer", `https://orbmarkets.io/tx/${result.txid}`],
-        ["Info", info],
-        ["Verification", result.verificationStatus],
-      ];
-      renderStatusBox({ title: "SUCCESS", rows: sellRows, tone: ANSI.green });
-      if (cfg.showQuoteDetails) {
-        console.log(`   • Quote Details      : ${JSON.stringify(result.quote, null, 2)}`);
-      }
+      result = await sellToken(mint, amountParam, { cfg });
     }
-    process.exit(0);
-  } catch (err) {
-    clearScreen();
-    const errorMessage = err?.message || "Unknown error";
-    const txidMatch = errorMessage.match(/[1-9A-HJ-NP-Za-km-z]{32,}/);
-    const txid = txidMatch ? txidMatch[0] : "-";
-    const explorer = txidMatch ? `https://orbmarkets.io/tx/${txid}` : "-";
-    const mintDisplay = `${mint.slice(0, 4)}…${mint.slice(-4)}`;
-    const amountDisplay = String(amountParam);
-    renderStatusBox({
-      title: "FAILED",
-      tone: ANSI.red,
-      rows: [
-        ["Action", type === "buy" ? "Buy" : "Sell"],
-        ["Mint", mintDisplay],
-        ["Amount", amountDisplay],
-        ["TXID", txid],
-        ["Explorer", explorer],
-        ["Error", errorMessage],
-      ],
+
+    const view = buildTradeStatusView({
+      type,
+      mint,
+      amount: amountParam,
+      result,
     });
-    process.exit(1);
+    clearScreen();
+    renderStatusBox({
+      title: view.title,
+      rows: view.rows,
+      tone: ANSI[view.tone] || ANSI.green,
+    });
+    if (cfg.showQuoteDetails && result?.quote) {
+      console.log(`   • Quote Details     : ${JSON.stringify(result.quote, null, 2)}`);
+    }
+    process.exit(view.exitCode);
+  } catch (err) {
+    const view = buildTradeStatusView({
+      type,
+      mint,
+      amount: amountParam,
+      error: err,
+    });
+    clearScreen();
+    renderStatusBox({
+      title: view.title,
+      rows: view.rows,
+      tone: ANSI[view.tone] || ANSI.red,
+    });
+    process.exit(view.exitCode);
   }
 }
 
@@ -848,29 +817,16 @@ program
   .description("Open your wallet in the browser via SolanaTracker.io")
   .action(async () => {
     // Lazy-load heavier deps only when wallet command runs
-    const [{ Keypair }, { default: bs58 }, { default: open }] = await Promise.all([
+    const [{ Keypair }, { parsePrivateKeyToSecretKey }, { default: open }] = await Promise.all([
       import("@solana/web3.js"),
-      import("bs58"),
+      import("./lib/privateKey.js"),
       import("open"),
     ]);
     try {
       const rawKey = await getPrivateKey();
-      let keypair;
-
-      try {
-        // Try base58 format
-        const bytes = bs58.decode(rawKey);
-        keypair = Keypair.fromSecretKey(bytes);
-      } catch {
-        try {
-          // Try JSON array format
-          const arr = JSON.parse(rawKey);
-          if (!Array.isArray(arr)) throw new Error("Not an array");
-          keypair = Keypair.fromSecretKey(Uint8Array.from(arr));
-        } catch {
-          throw new Error("Private key is neither base58 nor valid JSON array.");
-        }
-      }
+      // Shared parser (Base58 or JSON 32/64-byte); do not wipe — Keypair keeps the buffer.
+      const secretBytes = parsePrivateKeyToSecretKey(rawKey);
+      const keypair = Keypair.fromSecretKey(secretBytes);
 
       const pubkey = keypair.publicKey.toBase58();
       const url = `https://www.solanatracker.io/wallet/${pubkey}`;
@@ -978,10 +934,12 @@ USAGE:
 
   summon keychain store
       Store your private key in the macOS Keychain (recommended)
-        • Paste either a base58-encoded string OR a JSON array like [12, 34, ...]
+        • Interactive TTY only (pipe/paste from non-TTY is refused)
+        • Base58 64-byte secret or 32-byte seed, or JSON array of 32/64 bytes
+        • Key format is validated before write; invalid keys are rejected
 
   summon keychain unlock
-      Retrieve and verify your stored key
+      Verify Keychain retrieval without printing the key
 
   summon keychain delete
       Delete the private key from macOS Keychain
@@ -1013,12 +971,23 @@ NOTES:
       while we're waiting for trade confirmation.
   • Use summon buy or summon sell for trades
   • Buying with "auto" is NOT supported — use a number or percent
-  • Your private key is never stored in plain text — use the Keychain for secure access
+  • Private keys rest in Keychain (not config.json); they load into process memory for signing
+  • Private key entry requires an interactive terminal (non-TTY paste/pipe is refused)
   • Notifications are optional. Toggle notificationsEnabled in config if you want silence.
-  • Swaps show Pending → Success/Failed panes. If Verification is pending, open:
+  • Swaps show Pending → Success / Failed / Unknown. Unknown means confirmation timed out —
+    open the Orb Markets link; the swap may still have landed:
       https://orbmarkets.io/tx/<txid>
   • Quote details can be toggled in config or during setup
   • Always confirm transactions via returned TXID and fees
+
+executionMode:
+  basic — enable Solana RPC preflight simulation before accepting the tx
+  fast  — skip preflight for lower latency (default); higher risk if swap API is hostile
+
+Threat model (summary):
+  • Private keys live in macOS Keychain at rest; in process memory while summon runs
+  • Same-user malware can often read Keychain items; this is not a hardware wallet
+  • Swap transactions are built by SolanaTracker and signed locally — you trust that service
 
 Enjoy the chaos. 🪖
     `);
