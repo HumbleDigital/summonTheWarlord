@@ -67,7 +67,7 @@ npm install -g @vault77/summon@latest
 
 | Mode    | Preflight (`skipPreflight`) | Latency | Notes |
 |---------|-----------------------------|---------|--------|
-| `fast`  | Skipped (`true`)            | Lower   | Default. Optimized for speed; failed txs surface after submission. |
+| `fast`  | Skipped (`true`)            | Lower   | Default. Optimized for speed; confirmation is polled after send. |
 | `basic` | Enabled (`false`)           | Higher  | RPC simulates the transaction before send; better chance to catch bad builds early. |
 
 **Recommendation:** Default remains `fast` for trench latency. Prefer
@@ -77,6 +77,11 @@ safer preflight at the cost of speed. Configure via setup/wizard or:
 ```bash
 summon config set executionMode basic
 ```
+
+After send, the CLI polls `getSignatureStatus` on the configured RPC for up to
+50 seconds. `processed`, `confirmed`, and `finalized` all count as confirmed.
+Timeout is **UNKNOWN** with the Orb Markets explorer link — not FAILED. A
+missing `confirmationStatus` is not treated as failure.
 
 `DEBUG_MODE` is independent: it controls verbose SDK/network logging, not
 preflight. Only `DEBUG_MODE` (not `NODE_ENV`) enables swap debug logging.
