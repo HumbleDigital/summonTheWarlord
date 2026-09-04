@@ -949,10 +949,12 @@ USAGE:
 
   summon keychain store
       Store your private key in the macOS Keychain (recommended)
-        • Paste either a base58-encoded string OR a JSON array like [12, 34, ...]
+        • Interactive TTY only (pipe/paste from non-TTY is refused)
+        • Base58 64-byte secret or 32-byte seed, or JSON array of 32/64 bytes
+        • Key format is validated before write; invalid keys are rejected
 
   summon keychain unlock
-      Retrieve and verify your stored key
+      Verify Keychain retrieval without printing the key
 
   summon keychain delete
       Delete the private key from macOS Keychain
@@ -984,7 +986,7 @@ NOTES:
       while we're waiting for trade confirmation.
   • Use summon buy or summon sell for trades
   • Buying with "auto" is NOT supported — use a number or percent
-  • Your private key is never stored in plain text — use the Keychain for secure access
+  • Private keys rest in Keychain (not config.json); they load into process memory for signing
   • Private key entry requires an interactive terminal (non-TTY paste/pipe is refused)
   • Notifications are optional. Toggle notificationsEnabled in config if you want silence.
   • Swaps show Pending → Success/Failed panes. If Verification is pending, open:

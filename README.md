@@ -10,7 +10,7 @@
 
 ---
 
-⚠️ **Operator notice:** summonTheWarlord executes live on‑chain swaps. Always verify token mints, amounts, and configuration values before execution. If you buy crap its your fault.
+⚠️ **Operator notice:** summonTheWarlord executes live on‑chain swaps. Always verify token mints, amounts, and configuration values before execution. If you buy crap it's your fault.
 
 ## Requirements
 
@@ -27,7 +27,10 @@ First-time operator? Run `summon man` first for the built-in walkthrough.
 Have these inputs ready:
 
 - SolanaTracker RPC URL assigned to your account (full `https://...` endpoint; `advancedTx=true` can be present or omitted because summon enforces it automatically)
-- Wallet private key in one accepted format: base58 string or JSON byte array string (example: `[12,34,...]`)
+- Wallet private key in an accepted format:
+  - Base58 **64-byte** secret key, or Base58 **32-byte** seed
+  - JSON byte array of **64** or **32** numbers (example: `[12,34,...]`)
+  - Paste only in an **interactive terminal** (piping secrets is refused)
 
 During `summon setup`, you'll be asked for:
 
@@ -72,7 +75,7 @@ If this is your first time, run `summon man` before setup for the full command w
 This:
 
 - Creates/updates your config (RPC URL, slippage, priority fees, execution mode, etc.)
-- Stores your private key in the macOS Keychain (loaded into process memory only for local signing)
+- Stores your private key in the macOS Keychain (loaded into process memory for local signing while the CLI runs)
 - Prompts macOS notification permissions (optional)
 
 ---
@@ -102,13 +105,13 @@ summon man
 ```
 
 - `summon setup` — interactive setup for config plus Keychain/private key prompts
-- `summon config view` — show current config
+- `summon config view` — show current config (RPC URL credentials redacted in display)
 - `summon config edit` — edit config in your `$EDITOR`
 - `summon config set <key> <value>` — set one config value
 - `summon config wizard` — interactive, validated config editor
 - `summon config list` — list config keys and expected types
-- `summon keychain store` — store private key in macOS Keychain
-- `summon keychain unlock` — verify key retrieval from Keychain
+- `summon keychain store` — store private key in macOS Keychain (interactive TTY; key is validated before write)
+- `summon keychain unlock` — verify Keychain retrieval **without printing** the key
 - `summon keychain delete` — delete stored private key
 - `summon buy [TOKEN_MINT] [amount]` — buy with a fixed SOL amount or percentage (like `25%`); `auto` is not supported for buys
 - `summon sell [TOKEN_MINT] [amount]` — sell fixed amount, percent (like `50%`), or `auto`
@@ -121,10 +124,18 @@ summon man
 # 🧰 Local Development (optional)
 
 ```bash
-git clone https://github.com/monthviewsales/summonTheWarlord.git
+git clone https://github.com/HumbleDigital/summonTheWarlord.git
 cd summonTheWarlord
 npm install
 node summon-cli.js setup
+```
+
+To run a global `summon` against this checkout:
+
+```bash
+npm link
+# confirm:
+readlink "$(npm root -g)/@vault77/summon"
 ```
 
 ---
@@ -134,6 +145,13 @@ node summon-cli.js setup
 ```bash
 npm install -g @vault77/summon@latest
 ```
+
+### Notes for 2.3.x
+
+- New config key: `executionMode` (`basic` | `fast`, default **`fast`** — same latency profile as earlier releases).
+- Switch preflight on: `summon config set executionMode basic`
+- Legacy `walletSecretKey` / `swapAPIKey` fields in `config.json` are stripped on load.
+- Private key paste requires an interactive terminal.
 
 ---
 
@@ -177,7 +195,7 @@ Key options:
 - `txVersion` (`v0` or `legacy`)
 - `executionMode` (`basic` or `fast`) — `basic` runs RPC preflight (safer); `fast` skips preflight (default, lower latency)
 - `showQuoteDetails` (`true`/`false`)
-- `DEBUG_MODE` (`true`/`false`) — verbose SDK/network logs (independent of `NODE_ENV`)
+- `DEBUG_MODE` (`true`/`false`) — verbose SDK/network logs (independent of `NODE_ENV`; can expose full RPC URLs)
 - `notificationsEnabled` (`true`/`false`)
 - `jito.enabled` (`true`/`false`)
 - `jito.tip` (number, SOL)
@@ -189,7 +207,7 @@ Override config location (useful for CI or tests):
 - `SUMMON_CONFIG_HOME=/custom/config/dir`
 - `SUMMON_CONFIG_PATH=/custom/path/config.json`
 
-Private keys are not stored in this file; they rest in the macOS Keychain and are loaded into process memory for local signing. Use:
+Private keys are **not** stored in config. They rest in the macOS Keychain and are loaded into process memory for local signing:
 
 ```bash
 summon keychain store
@@ -201,9 +219,9 @@ summon keychain delete
 
 # 🔐 Security
 
-Private keys rest in the macOS Keychain and are loaded into process memory only for local signing. Prefer `executionMode=basic` when you want RPC preflight; `fast` skips preflight for lower latency.
+Private keys rest in the macOS Keychain and are loaded into process memory for local signing while the CLI runs. Prefer `executionMode=basic` when you want RPC preflight; `fast` skips preflight for lower latency.
 
-Full threat model, operator recommendations, legacy config notes, and vulnerability reporting: see **[SECURITY.md](./SECURITY.md)**.
+Full threat model, SolanaTracker trust notes, operator recommendations, legacy config cleanup, and vulnerability reporting: see **[SECURITY.md](./SECURITY.md)** (also published in the npm package).
 
 ---
 
@@ -222,7 +240,7 @@ npm run lint
 summon doctor
 ```
 
-Runs checks for config, Keychain access, RPC reachability, swap API health, and macOS notifications (skipped when disabled).
+Runs checks for config, Keychain access, RPC reachability, swap API health, and macOS notifications (skipped when disabled). Keychain access may be unlocked when the swap health check builds a client.
 
 ---
 
@@ -233,7 +251,6 @@ This never would have been possible without Open Source Software and these contr
 Dependencies:
 
 - `@solana/web3.js` — [MIT](https://github.com/solana-foundation/solana-web3.js/blob/HEAD/LICENSE)
-- `axios` — [MIT](https://github.com/axios/axios/blob/HEAD/LICENSE)
 - `bs58` — [MIT](https://github.com/cryptocoinjs/bs58/blob/HEAD/LICENSE)
 - `commander` — [MIT](https://github.com/tj/commander.js/blob/HEAD/LICENSE)
 - `fs-extra` — [MIT](https://github.com/jprichardson/node-fs-extra/blob/HEAD/LICENSE)
