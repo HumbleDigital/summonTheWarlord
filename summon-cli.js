@@ -18,6 +18,7 @@ import readline from "readline";
 import { notify } from "./utils/notify.js";
 import { runDoctor } from "./lib/doctor.js";
 import { MINT_EXAMPLE, getAmountExamples, validateTradeInput } from "./lib/tradeInput.js";
+import { buildTradeStatusView } from "./lib/tradeStatus.js";
 import { assertInteractiveSecretEntry } from "./lib/secretInput.js";
 import { redactSensitiveUrl } from "./lib/redact.js";
 
@@ -530,6 +531,7 @@ async function executeTrade(type, mintArg, amountArg) {
       ],
     });
 
+    let result;
     if (type === "buy") {
       if (amountParam === "auto") {
         console.error("⚠️  Buying with 'auto' isn’t supported. Use a number or '<percent>%'.");
@@ -537,59 +539,42 @@ async function executeTrade(type, mintArg, amountArg) {
       }
 
       const { buyToken } = await getTradeModule();
-      const result = await buyToken(mint, amountParam, { cfg });
-      clearScreen();
-      const info = `Received ${result.tokensReceivedDecimal} tokens | Fees ${result.totalFees} | Impact ${result.priceImpact}`;
-      const buyRows = [
-        ...baseRows,
-        ["TXID", result.txid],
-        ["Explorer", `https://orbmarkets.io/tx/${result.txid}`],
-        ["Info", info],
-        ["Verification", result.verificationStatus],
-      ];
-      renderStatusBox({ title: "SUCCESS", rows: buyRows, tone: ANSI.green });
-      if (cfg.showQuoteDetails) {
-        console.log(`   • Quote Details     : ${JSON.stringify(result.quote, null, 2)}`);
-      }
+      result = await buyToken(mint, amountParam, { cfg });
     } else if (type === "sell") {
       const { sellToken } = await getTradeModule();
-      const result = await sellToken(mint, amountParam, { cfg });
-      clearScreen();
-      const info = `Received ${result.solReceivedDecimal} SOL | Fees ${result.totalFees} | Impact ${result.priceImpact}`;
-      const sellRows = [
-        ...baseRows,
-        ["TXID", result.txid],
-        ["Explorer", `https://orbmarkets.io/tx/${result.txid}`],
-        ["Info", info],
-        ["Verification", result.verificationStatus],
-      ];
-      renderStatusBox({ title: "SUCCESS", rows: sellRows, tone: ANSI.green });
-      if (cfg.showQuoteDetails) {
-        console.log(`   • Quote Details      : ${JSON.stringify(result.quote, null, 2)}`);
-      }
+      result = await sellToken(mint, amountParam, { cfg });
     }
-    process.exit(0);
-  } catch (err) {
-    clearScreen();
-    const errorMessage = err?.message || "Unknown error";
-    const txidMatch = errorMessage.match(/[1-9A-HJ-NP-Za-km-z]{32,}/);
-    const txid = txidMatch ? txidMatch[0] : "-";
-    const explorer = txidMatch ? `https://orbmarkets.io/tx/${txid}` : "-";
-    const mintDisplay = `${mint.slice(0, 4)}…${mint.slice(-4)}`;
-    const amountDisplay = String(amountParam);
-    renderStatusBox({
-      title: "FAILED",
-      tone: ANSI.red,
-      rows: [
-        ["Action", type === "buy" ? "Buy" : "Sell"],
-        ["Mint", mintDisplay],
-        ["Amount", amountDisplay],
-        ["TXID", txid],
-        ["Explorer", explorer],
-        ["Error", errorMessage],
-      ],
+
+    const view = buildTradeStatusView({
+      type,
+      mint,
+      amount: amountParam,
+      result,
     });
-    process.exit(1);
+    clearScreen();
+    renderStatusBox({
+      title: view.title,
+      rows: view.rows,
+      tone: ANSI[view.tone] || ANSI.green,
+    });
+    if (cfg.showQuoteDetails && result?.quote) {
+      console.log(`   • Quote Details     : ${JSON.stringify(result.quote, null, 2)}`);
+    }
+    process.exit(view.exitCode);
+  } catch (err) {
+    const view = buildTradeStatusView({
+      type,
+      mint,
+      amount: amountParam,
+      error: err,
+    });
+    clearScreen();
+    renderStatusBox({
+      title: view.title,
+      rows: view.rows,
+      tone: ANSI[view.tone] || ANSI.red,
+    });
+    process.exit(view.exitCode);
   }
 }
 
@@ -989,7 +974,8 @@ NOTES:
   • Private keys rest in Keychain (not config.json); they load into process memory for signing
   • Private key entry requires an interactive terminal (non-TTY paste/pipe is refused)
   • Notifications are optional. Toggle notificationsEnabled in config if you want silence.
-  • Swaps show Pending → Success/Failed panes. If Verification is pending, open:
+  • Swaps show Pending → Success / Failed / Unknown. Unknown means confirmation timed out —
+    open the Orb Markets link; the swap may still have landed:
       https://orbmarkets.io/tx/<txid>
   • Quote details can be toggled in config or during setup
   • Always confirm transactions via returned TXID and fees

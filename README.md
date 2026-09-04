@@ -193,7 +193,7 @@ Key options:
 - `priorityFee` (number or `"auto"`)
 - `priorityFeeLevel` (`min|low|medium|high|veryHigh`) — required when `priorityFee="auto"`
 - `txVersion` (`v0` or `legacy`)
-- `executionMode` (`basic` or `fast`) — `basic` runs RPC preflight (safer); `fast` skips preflight (default, lower latency)
+- `executionMode` (`basic` or `fast`) — `basic` runs RPC preflight (safer); `fast` skips preflight (default, lower latency). After send, the CLI polls your RPC for up to 50s. Timeout is **UNKNOWN** with an Orb Markets link, not FAILED.
 - `showQuoteDetails` (`true`/`false`)
 - `DEBUG_MODE` (`true`/`false`) — verbose SDK/network logs (independent of `NODE_ENV`; can expose full RPC URLs)
 - `notificationsEnabled` (`true`/`false`)
