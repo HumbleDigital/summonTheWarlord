@@ -6,6 +6,7 @@ describe("buildPerformSwapOptions", () => {
     expect(buildPerformSwapOptions({ executionMode: "fast" })).toEqual({
       debug: false,
       sendOptions: { skipPreflight: true },
+      skipConfirmationCheck: true,
     });
   });
 
@@ -13,6 +14,7 @@ describe("buildPerformSwapOptions", () => {
     expect(buildPerformSwapOptions({ executionMode: "basic" })).toEqual({
       debug: false,
       sendOptions: { skipPreflight: false },
+      skipConfirmationCheck: true,
     });
   });
 
@@ -20,6 +22,7 @@ describe("buildPerformSwapOptions", () => {
     expect(buildPerformSwapOptions({})).toEqual({
       debug: false,
       sendOptions: { skipPreflight: true },
+      skipConfirmationCheck: true,
     });
   });
 
@@ -32,6 +35,7 @@ describe("buildPerformSwapOptions", () => {
     ).toEqual({
       debug: false,
       sendOptions: { skipPreflight: true },
+      skipConfirmationCheck: true,
       jito: { enabled: true, tip: 0.0002 },
     });
   });
@@ -53,5 +57,11 @@ describe("buildPerformSwapOptions", () => {
   test("normalizes executionMode case-insensitively", () => {
     expect(buildPerformSwapOptions({ executionMode: "BASIC" }).sendOptions.skipPreflight).toBe(false);
     expect(buildPerformSwapOptions({ executionMode: "Fast" }).sendOptions.skipPreflight).toBe(true);
+  });
+
+  test("always skips the SDK confirmation waiter", () => {
+    expect(buildPerformSwapOptions({ executionMode: "fast" }).skipConfirmationCheck).toBe(true);
+    expect(buildPerformSwapOptions({ executionMode: "basic" }).skipConfirmationCheck).toBe(true);
+    expect(buildPerformSwapOptions({}).skipConfirmationCheck).toBe(true);
   });
 });
