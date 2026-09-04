@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const BASE_CFG = {
+  rpcUrl: "https://example.invalid/rpc",
   slippage: 1,
   priorityFee: "auto",
   priorityFeeLevel: "medium",
@@ -45,6 +46,11 @@ describe("trades config reuse", () => {
     jest.unstable_mockModule("../lib/config.js", () => ({ loadConfig: loadConfigMock }));
     jest.unstable_mockModule("../lib/swapClient.js", () => ({ getSwapClient: getSwapClientMock }));
     jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
+    jest.unstable_mockModule("../lib/confirmTransaction.js", () => ({
+      confirmTransaction: jest.fn().mockResolvedValue({ status: "confirmed", err: null }),
+      extractSignatureFromError: () => null,
+      ON_CHAIN_FAILED_MESSAGE: "Transaction failed on-chain. Check the explorer.",
+    }));
 
     const { buyToken } = await import("../lib/trades.js");
     const contextCfg = { ...BASE_CFG, slippage: 3 };
@@ -63,6 +69,11 @@ describe("trades config reuse", () => {
     jest.unstable_mockModule("../lib/config.js", () => ({ loadConfig: loadConfigMock }));
     jest.unstable_mockModule("../lib/swapClient.js", () => ({ getSwapClient: getSwapClientMock }));
     jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
+    jest.unstable_mockModule("../lib/confirmTransaction.js", () => ({
+      confirmTransaction: jest.fn().mockResolvedValue({ status: "confirmed", err: null }),
+      extractSignatureFromError: () => null,
+      ON_CHAIN_FAILED_MESSAGE: "Transaction failed on-chain. Check the explorer.",
+    }));
 
     const { sellToken } = await import("../lib/trades.js");
     const contextCfg = { ...BASE_CFG, slippage: 4 };
@@ -81,6 +92,11 @@ describe("trades config reuse", () => {
     jest.unstable_mockModule("../lib/config.js", () => ({ loadConfig: loadConfigMock }));
     jest.unstable_mockModule("../lib/swapClient.js", () => ({ getSwapClient: getSwapClientMock }));
     jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
+    jest.unstable_mockModule("../lib/confirmTransaction.js", () => ({
+      confirmTransaction: jest.fn().mockResolvedValue({ status: "confirmed", err: null }),
+      extractSignatureFromError: () => null,
+      ON_CHAIN_FAILED_MESSAGE: "Transaction failed on-chain. Check the explorer.",
+    }));
 
     const { buyToken } = await import("../lib/trades.js");
     await buyToken(MINT, 0.25);
@@ -98,6 +114,11 @@ describe("trades config reuse", () => {
     jest.unstable_mockModule("../lib/config.js", () => ({ loadConfig: loadConfigMock }));
     jest.unstable_mockModule("../lib/swapClient.js", () => ({ getSwapClient: getSwapClientMock }));
     jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
+    jest.unstable_mockModule("../lib/confirmTransaction.js", () => ({
+      confirmTransaction: jest.fn().mockResolvedValue({ status: "confirmed", err: null }),
+      extractSignatureFromError: () => null,
+      ON_CHAIN_FAILED_MESSAGE: "Transaction failed on-chain. Check the explorer.",
+    }));
 
     const { buyToken } = await import("../lib/trades.js");
     await buyToken(MINT, 0.1, { cfg: { ...BASE_CFG, executionMode: "basic" } });
@@ -119,6 +140,11 @@ describe("trades config reuse", () => {
     jest.unstable_mockModule("../lib/config.js", () => ({ loadConfig: loadConfigMock }));
     jest.unstable_mockModule("../lib/swapClient.js", () => ({ getSwapClient: getSwapClientMock }));
     jest.unstable_mockModule("../utils/notify.js", () => ({ notify: notifyMock }));
+    jest.unstable_mockModule("../lib/confirmTransaction.js", () => ({
+      confirmTransaction: jest.fn().mockResolvedValue({ status: "confirmed", err: null }),
+      extractSignatureFromError: () => null,
+      ON_CHAIN_FAILED_MESSAGE: "Transaction failed on-chain. Check the explorer.",
+    }));
 
     const { buyToken } = await import("../lib/trades.js");
     await buyToken(MINT, 0.1, { cfg: { ...BASE_CFG, executionMode: "fast" } });
