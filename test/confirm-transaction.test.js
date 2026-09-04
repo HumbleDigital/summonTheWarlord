@@ -130,6 +130,22 @@ describe("confirmTransaction", () => {
     expect(getSignatureStatus).toHaveBeenCalledTimes(2);
   });
 
+  test("treats a non-transient status fetch error as pending and times out to unknown", async () => {
+    jest.useFakeTimers();
+    const getSignatureStatus = jest.fn().mockRejectedValue(new Error("401 Unauthorized"));
+
+    const pending = confirmTransaction({
+      signature: SIG,
+      getSignatureStatus,
+      delays: [5],
+    });
+    await jest.runAllTimersAsync();
+    const result = await pending;
+
+    expect(result).toEqual({ status: "unknown", err: null });
+    expect(getSignatureStatus).toHaveBeenCalled();
+  });
+
   test("does not confirm a value with err null and no confirmationStatus", async () => {
     jest.useFakeTimers();
     const getSignatureStatus = jest.fn().mockResolvedValue({ value: { err: null, slot: 9 } });
