@@ -967,7 +967,7 @@ USAGE:
 NOTES:
   • This tool relies on SolanaTracker.io as its backend and won't work without them.
       You can use the default RPC URL, but may see errors and issues because it’s free & public.
-      Signup for a free account here: https://www.solanatracker.io/solana-rpc
+      Signup for a free account here: https://go.solanatracker.io/scooby-carolan-sol-1qx2 (refferal)
       Use the new URL you are assigned in the config file.
   • You may see errors about rate limits.  This is largely due to using the free endpoint,
       but they do happen occasionally.  Your trade may still go through because those errors happen
