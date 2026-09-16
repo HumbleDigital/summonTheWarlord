@@ -593,7 +593,7 @@ configCmd
 
 configCmd
   .command("edit")
-  .description("Edit config in your $EDITOR")
+  .description("Advanced : Edit config in your $EDITOR (vim)")
   .action(async () => {
     await editConfig();
   });
@@ -921,7 +921,7 @@ USAGE:
       View current configuration
 
   summon config edit
-      Edit config in your $EDITOR
+      Advanced : Edit config in your $EDITOR (vim)
 
   summon config set <key> <value>
       Set a single config key
