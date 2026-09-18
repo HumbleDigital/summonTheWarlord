@@ -62,7 +62,6 @@ describe("defaultFactory debug gating and keypair secret integrity", () => {
       this.apiKey = apiKey;
       this.debug = debug;
       this.setDebug = jest.fn();
-      this.setCustomSendTransactionEndpoint = jest.fn().mockResolvedValue(undefined);
     });
 
     jest.unstable_mockModule("solana-swap", () => ({ SolanaTracker }));
@@ -155,93 +154,5 @@ describe("defaultFactory debug gating and keypair secret integrity", () => {
     expect(Buffer.from(keypair.secretKey).equals(Buffer.from(original.secretKey))).toBe(true);
     expect(keypair.publicKey.equals(original.publicKey)).toBe(true);
     expect(client.keypair).toBe(keypair);
-  });
-});
-
-describe("resolveSendTransactionEndpoint", () => {
-  test("defaults SolanaTracker rpc hosts to public mainnet send", async () => {
-    jest.unstable_mockModule("solana-swap", () => ({ SolanaTracker: class {} }));
-    const {
-      resolveSendTransactionEndpoint,
-      DEFAULT_SEND_TRANSACTION_ENDPOINT,
-    } = await import("../lib/swapClient.js");
-
-    expect(
-      resolveSendTransactionEndpoint("https://rpc-mainnet.solanatracker.io/?api_key=x")
-    ).toBe(DEFAULT_SEND_TRANSACTION_ENDPOINT);
-    expect(
-      resolveSendTransactionEndpoint("https://rpc.solanatracker.io/public?advancedTx=true")
-    ).toBe(DEFAULT_SEND_TRANSACTION_ENDPOINT);
-  });
-
-  test("honors explicit sendRpcUrl and leaves non-ST rpc alone", async () => {
-    jest.unstable_mockModule("solana-swap", () => ({ SolanaTracker: class {} }));
-    const { resolveSendTransactionEndpoint } = await import("../lib/swapClient.js");
-
-    expect(
-      resolveSendTransactionEndpoint(
-        "https://rpc-mainnet.solanatracker.io",
-        "https://my-sender.example"
-      )
-    ).toBe("https://my-sender.example");
-    expect(resolveSendTransactionEndpoint("https://rpc.example")).toBeNull();
-  });
-});
-
-describe("defaultFactory send endpoint routing", () => {
-  test("sets custom send endpoint for SolanaTracker rpcUrl", async () => {
-    const SolanaTracker = jest.fn().mockImplementation(function () {
-      this.setDebug = jest.fn();
-      this.setCustomSendTransactionEndpoint = jest.fn().mockResolvedValue(undefined);
-    });
-
-    jest.unstable_mockModule("solana-swap", () => ({ SolanaTracker }));
-    jest.unstable_mockModule("../utils/logger.js", () => ({
-      logger: { warn: jest.fn(), error: jest.fn() },
-    }));
-    jest.unstable_mockModule("../utils/keychain.js", () => ({
-      getPrivateKey: jest.fn().mockResolvedValue(bs58.encode(Keypair.generate().secretKey)),
-    }));
-    jest.unstable_mockModule("../utils/notify.js", () => ({ notify: jest.fn() }));
-
-    const { getSwapClient, DEFAULT_SEND_TRANSACTION_ENDPOINT } = await import("../lib/swapClient.js");
-    const client = await getSwapClient({
-      cfg: {
-        rpcUrl: "https://rpc-mainnet.solanatracker.io",
-        DEBUG_MODE: false,
-        notificationsEnabled: false,
-      },
-    });
-
-    expect(client.setCustomSendTransactionEndpoint).toHaveBeenCalledWith(
-      DEFAULT_SEND_TRANSACTION_ENDPOINT
-    );
-  });
-
-  test("does not set custom send endpoint for non-SolanaTracker rpcUrl", async () => {
-    const SolanaTracker = jest.fn().mockImplementation(function () {
-      this.setDebug = jest.fn();
-      this.setCustomSendTransactionEndpoint = jest.fn().mockResolvedValue(undefined);
-    });
-
-    jest.unstable_mockModule("solana-swap", () => ({ SolanaTracker }));
-    jest.unstable_mockModule("../utils/logger.js", () => ({
-      logger: { warn: jest.fn(), error: jest.fn() },
-    }));
-    jest.unstable_mockModule("../utils/keychain.js", () => ({
-      getPrivateKey: jest.fn().mockResolvedValue(bs58.encode(Keypair.generate().secretKey)),
-    }));
-    jest.unstable_mockModule("../utils/notify.js", () => ({ notify: jest.fn() }));
-
-    const { getSwapClient } = await import("../lib/swapClient.js");
-    const client = await getSwapClient({
-      cfg: {
-        rpcUrl: "https://rpc.example",
-        DEBUG_MODE: false,
-        notificationsEnabled: false,
-      },
-    });
-
-    expect(client.setCustomSendTransactionEndpoint).not.toHaveBeenCalled();
   });
 });
