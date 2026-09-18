@@ -6,8 +6,9 @@ describe("formatSwapExecutionError", () => {
       new Error("Failed to send transaction: Simulation failed. Message: no proxy available.")
     );
     expect(msg).toMatch(/no proxy available/i);
-    expect(msg).toMatch(/executionMode=fast/);
+    expect(msg).toMatch(/sendRpcUrl/);
     expect(msg).toMatch(/doctor only checks quote/i);
+    expect(msg).not.toMatch(/executionMode=fast/);
   });
 
   test("passes through unrelated errors", () => {
