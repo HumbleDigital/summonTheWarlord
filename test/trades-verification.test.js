@@ -135,4 +135,30 @@ describe("trade verification behavior", () => {
     await expect(buyToken(MINT, 0.2)).rejects.toThrow("Swap failed: Failed to send transaction");
     expect(confirmTransaction).not.toHaveBeenCalled();
   });
+
+  test("notifies with annotated swap execution error when send fails without a signature", async () => {
+    const tracker = makeTracker(
+      jest.fn().mockRejectedValue(
+        new Error("Failed to send transaction: Simulation failed. Message: no proxy available.")
+      )
+    );
+    const confirmTransaction = jest.fn();
+    const notify = jest.fn();
+    const { buyToken } = await loadBuy({
+      tracker,
+      confirmTransaction,
+      notify,
+      cfg: { ...BASE_CFG, notificationsEnabled: true },
+    });
+
+    await expect(buyToken(MINT, 0.2)).rejects.toThrow(/no proxy available/i);
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "❌ Swap Failed",
+        subtitle: "Buy failed",
+        message: expect.stringMatching(/doctor only checks quote/i),
+      })
+    );
+    expect(confirmTransaction).not.toHaveBeenCalled();
+  });
 });

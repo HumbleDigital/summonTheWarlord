@@ -21,6 +21,7 @@ import { MINT_EXAMPLE, getAmountExamples, validateTradeInput } from "./lib/trade
 import { buildTradeStatusView } from "./lib/tradeStatus.js";
 import { assertInteractiveSecretEntry } from "./lib/secretInput.js";
 import { redactSensitiveUrl } from "./lib/redact.js";
+import { promptSelect } from "./lib/promptSelect.js";
 
 const program = new Command();
 program
@@ -271,34 +272,6 @@ function renderConfigSummary(cfg, configPath, title = "CONFIG") {
     ["Jito tip (SOL)", jitoTip],
   ];
   console.log(formatBox({ title, rows }));
-}
-
-async function promptSelect(rl, label, options, { current, required = false } = {}) {
-  const menu = options.map((opt, index) => `  ${index + 1}) ${opt}`).join("\n");
-  while (true) {
-    console.log(`\n${label}`);
-    console.log(menu);
-    const suffix = current ? ` [${current}]` : "";
-    const answer = await askQuestion(rl, `Select${suffix}: `);
-    if (!answer) {
-      if (current !== undefined && current !== null && current !== "") {
-        return current;
-      }
-      if (required) {
-        console.log("⚠️  Selection required.");
-        continue;
-      }
-      return current;
-    }
-    const normalized = answer.trim();
-    const index = Number(normalized);
-    if (Number.isInteger(index) && index >= 1 && index <= options.length) {
-      return options[index - 1];
-    }
-    const match = options.find((opt) => opt.toLowerCase() === normalized.toLowerCase());
-    if (match) return match;
-    console.log("⚠️  Invalid selection. Choose a number or value from the list.");
-  }
 }
 
 async function promptNormalized(rl, label, key, { current, required = false } = {}) {
@@ -967,7 +940,7 @@ USAGE:
 NOTES:
   • This tool relies on SolanaTracker.io as its backend and won't work without them.
       You can use the default RPC URL, but may see errors and issues because it’s free & public.
-      Signup for a free account here: https://go.solanatracker.io/scooby-carolan-sol-1qx2 (refferal)
+      Signup for a free account here: https://go.solanatracker.io/scooby-carolan-sol-1qx2 (referral)
       Use the new URL you are assigned in the config file.
   • You may see errors about rate limits.  This is largely due to using the free endpoint,
       but they do happen occasionally.  Your trade may still go through because those errors happen
