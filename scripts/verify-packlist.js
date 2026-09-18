@@ -12,6 +12,7 @@ export const EXPECTED_PACKAGE_FILES = [
   "lib/errors.js",
   "lib/executionMode.js",
   "lib/privateKey.js",
+  "lib/promptSelect.js",
   "lib/redact.js",
   "lib/secretInput.js",
   "lib/swapClient.js",
