@@ -55,7 +55,7 @@
     "eslint": "^9.39.3",
     "eslint-plugin-import": "^2.32.0",
     "globals": "17.13.0",
-    "jest": "30.5.2"
+    "jest": "30.4.2"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
